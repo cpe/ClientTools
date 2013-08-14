@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from functions import *
+import functions 
 
 NAMESPACE='http://vamdc.org/xml/xsams/1.0'
 
@@ -291,7 +291,7 @@ class Molecule(object):
                 
     def additem(self, item, value):
         try:
-            if isiterable(value):
+            if functions.isiterable(value):
                 value_list = []
                 for row in value:
                     if hasattr(row,'tag') and row.tag=="{%s}PartitionFunction" % NAMESPACE:

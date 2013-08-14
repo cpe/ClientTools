@@ -25,6 +25,15 @@ class Nodelist(object):
 
         return returnstring
 
+    def getnode(self, identifier):
+        """
+        Return node instance for the given identifier
+        """
+        for node in self.nodes:
+            if node.identifier == identifier:
+                return node
+        return None
+    
 class Node(object):
     """
     This class contains informations and methods associated with one (VAMDC) database node,

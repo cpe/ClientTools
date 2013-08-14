@@ -3,11 +3,14 @@ import sqlite3
 from datetime import datetime
 from dateutil import parser
 
-from functions import *
-from query import *
-from results import *
+import functions
+import query as q
+import results 
+import nodes
+import specmodel
 
 DATABASE_FILE = "cdms_sqlite.db"
+
 
 class Database(object):
 
@@ -15,7 +18,7 @@ class Database(object):
         """
         Connect to database.
 
-        Database will be created if it does not exist 
+        Database will be created if it does not exist
         """
         try:
             self.conn = sqlite3.connect(DATABASE_FILE)
@@ -24,8 +27,8 @@ class Database(object):
             print "Can not connect to sqlite3 databse %s." % DATABASE_FILE
             print "Error: %d: %s" % (e.args[0], e.args[1])
         return
-        
-    def create_structure(self):        
+
+    def create_structure(self):
         """
         Create tables in the sqlite3 database
 
@@ -47,9 +50,9 @@ class Database(object):
 
         #-------------------------------------------------
         # INSERT TRANSITIONS
-    
+
         sql_create_transitions = """CREATE TABLE Transitions (
-        T_Name TEXT,        
+        T_Name TEXT,
         T_Frequency REAL,
         T_Intensity REAL,
         T_EinsteinA REAL,
@@ -183,15 +186,15 @@ class Database(object):
         PF_URL TEXT,
         PF_Comment TEXT,
         PF_Timestamp)"""
-    
-        cursor.execute(sql_create_transitions)    
+
+        cursor.execute(sql_create_transitions)
         cursor.execute(sql_create_partitionfunctions)
 
         #-------------------------------------------------------------
-        
+
         return
 
-    def insert_specie(self, Molecules=None, Atoms=None, node = None):
+    def insert_specie(self, Molecules=None, Atoms=None, node=None):
         """
         Insert species data into database
 
@@ -206,38 +209,44 @@ class Database(object):
         else:
             resourceID = 'NULL'
             url = 'NULL'
-        
+
         # Insert molecules
         for id in Molecules:
-            
+
             # Insert row in partitionfunctions
             try:
-                cursor.execute("INSERT INTO Partitionfunctions (PF_Name, PF_SpeciesID, PF_VamdcSpeciesID, PF_Comment, PF_ResourceID, PF_URL, PF_Timestamp) VALUES (?,?,?,?,?,?,?)",
-                               ("%s" % (Molecules[id].OrdinaryStructuralFormula),
-                                id,
-                                "%s" % (Molecules[id].VAMDCSpeciesID),
-                                "%s" % (Molecules[id].Comment),
-                                resourceID,
-                                "%s%s%s" % (url,"sync?LANG=VSS2&amp;REQUEST=doQuery&amp;FORMAT=XSAMS&amp;QUERY=Select+*+where+MoleculeSpeciesID%3D",id),
-                                datetime.now()))
+                cursor.execute("""INSERT INTO Partitionfunctions
+                                  ( PF_Name,
+                                    PF_SpeciesID,
+                                    PF_VamdcSpeciesID,
+                                    PF_Comment,
+                                    PF_ResourceID,
+                                    PF_URL,
+                                    PF_Timestamp)
+                                   VALUES (?,?,?,?,?,?,?)""",
+                  ("%s" % (Molecules[id].OrdinaryStructuralFormula),
+                   id,
+                   "%s" % (Molecules[id].VAMDCSpeciesID),
+                   "%s" % (Molecules[id].Comment),
+                   resourceID,
+                   "%s%s%s" % (url, "sync?LANG=VSS2&amp;REQUEST=doQuery&amp;FORMAT=XSAMS&amp;QUERY=Select+*+where+MoleculeSpeciesID%3D", id),
+                   datetime.now()))
             except sqlite3.Error as e:
                 print "An error occurred:", e.args[0]
-
-
 
             # Update Partitionfunctions
             try:
                 for pfs in Molecules[id].PartitionFunction:
                     if not pfs['NuclearSpinIsomer']:
                         for temperature in pfs['Values']:
-                        
+
                             try:
-                                field = ("PF_%.3lf" % float(temperature)).replace('.','_')
+                                field = ("PF_%.3lf" % float(temperature)).replace('.', '_')
                                 sql = "UPDATE Partitionfunctions SET %s=? WHERE PF_SpeciesID=?" % field
-                                cursor.execute(sql,(pfs['Values'][temperature],id))
+                                cursor.execute(sql, (pfs['Values'][temperature], id))
                             except Exception, e:
                                 print "SQL-Error: %s " % sql
-                                print pfs['Values'][temperature],id
+                                print pfs['Values'][temperature], id
                                 print "Error: %d: %s" % (e.args[0], e.args[1])
             except:
                 pass
@@ -246,7 +255,7 @@ class Database(object):
         self.conn.commit()
         cursor.close()
         return
-    
+
         #except Exception, e:
         #        print Molecules[id].InChIKey[0]
         #        print "INSERT INTO Partitionfunctions (PF_Name, PF_SpeciesID, PF_Inchikey) VALUES (%s,%s,%s)" %  (Molecules[id].Comment[0],
@@ -258,17 +267,17 @@ class Database(object):
         """
         # will contain a list of names which belong to one specie
         species_names = {}
-        
+
         #----------------------------------------------------------
         # Create a list of species for which transitions will be
         # retrieved and inserted in the database.
         # Species have to be in the Partitionfunctions - table
-        
-        if not isiterable(species):
+
+        if not functions.isiterable(species):
             species = [species]
 
         species_list = []
-               
+
         cursor = self.conn.cursor()
         for specie in species:
             cursor.execute("SELECT PF_Name, PF_SpeciesID, PF_VamdcSpeciesID, PF_HFS FROM Partitionfunctions WHERE PF_SpeciesID=? or PF_VamdcSpeciesID=?",
@@ -278,15 +287,13 @@ class Database(object):
                 species_list.append([row[0], row[1], row[2], row[3]])
 
         #--------------------------------------------------------------
-        
-
 
         for specie in species_list:
             num_transitions = {}
 
             #------------------------------------
             # Retrieve data from the database
-            
+
             id = specie[1]
             vamdcspeciesid = specie[2]
             hfs = specie[3]
@@ -299,65 +306,63 @@ class Database(object):
                 stateInfo = name_array[1].strip()
             except:
                 stateInfo = ''
-                
-            # get hfs-flag from the name. 
+
+            # get hfs-flag from the name.
             try:
                 hfsInfo = name_array[2].strip()
             except:
                 hfsInfo = ''
 
             # Create query string
-            query_string = "SELECT ALL WHERE VAMDCSpeciesID='%s'" % vamdcspeciesid            
-            if hfs is not None and hfs.strip()!='':
+            query_string = "SELECT ALL WHERE VAMDCSpeciesID='%s'" % vamdcspeciesid
+            if hfs is not None and hfs.strip() != '':
                 query_string += " and RadTransCode='%s'" % hfs
-            query = Query()
-            result = Result()
-            
+            query = q.Query()
+            result = results.Result()
+
             # Get data from the database
             query.set_query(query_string)
             query.set_node(node)
-        
+
             result.set_query(query)
             result.do_query()
             result.populate_model()
             #---------------------------------------
 
-            
             cursor = self.conn.cursor()
             cursor.execute('BEGIN TRANSACTION')
 
             cursor.execute("DELETE FROM Transitions WHERE T_Name = ?", (name,))
 
-        
             for trans in result.RadiativeTransitions:
                 # data might contain transitions for other species (if query is based on ichikey/vamdcspeciesid).
                 # Insert transitions only if they belong to the correct specie
 
                 if result.RadiativeTransitions[trans].SpeciesID == id:
-                    
+
                     # Get upper and lower state from the states table
-                    upper_state = result.States["%s" % result.RadiativeTransitions[trans].UpperStateRef]                
+                    upper_state = result.States["%s" % result.RadiativeTransitions[trans].UpperStateRef]
                     lower_state = result.States["%s" % result.RadiativeTransitions[trans].LowerStateRef]
-                   
+
                     # Get string which identifies the vibrational states involved in the transition
                     try:
-                        if upper_state.QuantumNumbers.vibstate==lower_state.QuantumNumbers.vibstate:
+                        if upper_state.QuantumNumbers.vibstate == lower_state.QuantumNumbers.vibstate:
                             t_state = str(upper_state.QuantumNumbers.vibstate).strip()
                         else:
                             #vup = upper_state.QuantumNumbers.vibstate.split(",")
                             #vlow = lower_state.QuantumNumbers.vibstate.split(",")
-                            v_dict={}
-                            for label in list(set(upper_state.QuantumNumbers.qns.keys()+lower_state.QuantumNumbers.qns.keys())):
+                            v_dict = {}
+                            for label in list(set(upper_state.QuantumNumbers.qns.keys() + lower_state.QuantumNumbers.qns.keys())):
                                 if isVibrationalStateLabel(label):
                                     try:
-                                        value_up=upper_state.QuantumNumbers.qns[label]
+                                        value_up = upper_state.QuantumNumbers.qns[label]
                                     except:
                                         value_up = 0
                                     try:
-                                        value_low=lower_state.QuantumNumbers.qns[label]
+                                        value_low = lower_state.QuantumNumbers.qns[label]
                                     except:
                                         value_low = 0
-                                    v_dict[label]=[value_up, value_low]
+                                    v_dict[label] = [value_up, value_low]
                             v_string = ''
                             valup_string = ''
                             vallow_string = ''
@@ -365,17 +370,17 @@ class Database(object):
                                 v_string += "%s," % v
                                 valup_string += "%s," % v_dict[v][0]
                                 vallow_string += "%s," % v_dict[v][1]
-                            if len(v_dict)>1:
-                                t_state = "(%s)=(%s)-(%s)" % (v_string[:-1],valup_string[:-1],vallow_string[:-1])
+                            if len(v_dict) > 1:
+                                t_state = "(%s)=(%s)-(%s)" % (v_string[:-1], valup_string[:-1], vallow_string[:-1])
                             else:
-                                t_state = "%s=%s-%s" % (v_string[:-1],valup_string[:-1],vallow_string[:-1])
+                                t_state = "%s=%s-%s" % (v_string[:-1], valup_string[:-1], vallow_string[:-1])
 
                             #t_state = '(%s)-(%s)' % (upper_state.QuantumNumbers.vibstate,lower_state.QuantumNumbers.vibstate)
                     except:
                         t_state = ''
 
                     # go to the next transition if state does not match
-                    if t_state!=stateInfo and stateInfo is not None and stateInfo!='':
+                    if t_state != stateInfo and stateInfo is not None and stateInfo != '':
                         continue
 
                     # Get hyperfinestructure info if hfsInfo is None
@@ -385,7 +390,7 @@ class Database(object):
                         t_hfs = ''
                         try:
                             for pc in result.RadiativeTransitions[trans].ProcessClass:
-                                if str(pc)[:3]=='hyp':
+                                if str(pc)[:3] == 'hyp':
                                     t_hfs = str(pc)
                         except Exception, e:
                             print "Error: %s", e
@@ -394,19 +399,19 @@ class Database(object):
 
                     # if hfs is not None and empty then only Transitions without hfs-flag
                     # should be processed
-                    if hfs is not None and hfs!=t_hfs:
+                    if hfs is not None and hfs != t_hfs:
                         continue
-                    
+
                     t_name = "%s; %s; %s" % (formula, t_state, t_hfs)
                     t_name = t_name.strip()
                     # update list of distinct species names.
-                    if species_names.has_key(id):
+                    if id in species_names:
                         if not t_name in species_names[id]:
                             species_names[id].append(t_name)
-                            num_transitions[t_name]=0
+                            num_transitions[t_name] = 0
                     else:
-                        species_names[id]=[t_name]
-                        num_transitions[t_name]=0
+                        species_names[id] = [t_name]
+                        num_transitions[t_name] = 0
 
                     frequency = result.RadiativeTransitions[trans].FrequencyValue
                     uncertainty = "%lf" % result.RadiativeTransitions[trans].FrequencyAccuracy
@@ -417,7 +422,7 @@ class Database(object):
                     else:
                         weight = None
 
-                    # Get nuclear spin isomer (ortho/para) if present 
+                    # Get nuclear spin isomer (ortho/para) if present
                     try:
                         nsiName = upper_state.NuclearSpinIsomerName
                     except AttributeError:
@@ -430,27 +435,27 @@ class Database(object):
                         T_Frequency,
                         T_EinsteinA,
                         T_Uncertainty,
-                        T_EnergyLower, 
+                        T_EnergyLower,
                         T_UpperStateDegeneracy,
                         T_HFS,
                         T_UpperStateQuantumNumbers,
                         T_LowerStateQuantumNumbers) VALUES
                         (?, ?,?,?,?, ?,?, ?,?)""",
-                                       (t_name, 
+                                       (t_name,
                                         "%lf" % frequency,
-                                        "%lf" %  result.RadiativeTransitions[trans].TransitionProbabilityA, 
-                                        uncertainty, "%lf" % lower_state.StateEnergyValue, 
+                                        "%lf" % result.RadiativeTransitions[trans].TransitionProbabilityA,
+                                        uncertainty, "%lf" % lower_state.StateEnergyValue,
                                         weight,
                                         #upper_state.QuantumNumbers.case,
                                         t_hfs,
                                         str(upper_state.QuantumNumbers.qn_string),
-                                        str(lower_state.QuantumNumbers.qn_string),                            
+                                        str(lower_state.QuantumNumbers.qn_string),
                                         ))
-                        num_transitions[t_name]+=1
+                        num_transitions[t_name] += 1
                     except Exception, e:
                         print "Transition has not been inserted:\n Error: %s" % e
 
-            print "Processed: %s - %s" % (id,name)
+            print "Processed: %s - %s" % (id, name)
             for row in num_transitions:
                 print "      for %s inserted %d transitions" % (row, num_transitions[row])
             self.conn.commit()
@@ -458,8 +463,6 @@ class Database(object):
 
         self.update_species_names(species_names)
         return num_transitions
-
-
 
     def dublicate_partitionfunctions(self, speciesid, name):
 
@@ -595,7 +598,6 @@ class Database(object):
         print "Created %s in Partitionfunctions" % str(name)
         self.conn.commit()
         cursor.close()
-        
 
     def update_species_names(self, species_names):
         """
@@ -604,8 +606,8 @@ class Database(object):
         cursor = self.conn.cursor()
         # loop over list of species-Ids:
         for speciesid in species_names:
-            delete_rows=[]
-            
+            delete_rows = []
+
             cursor.execute("SELECT PF_Name, PF_HFS FROM Partitionfunctions WHERE PF_SpeciesID=?", [(speciesid)])
             rows = cursor.fetchall()
             num_rows = len(rows)
@@ -628,7 +630,7 @@ class Database(object):
 
         self.conn.commit()
         cursor.close()
-        
+
     def check_for_updates(self, node):
         """
         """
@@ -640,31 +642,31 @@ class Database(object):
         cursor.execute("SELECT PF_Name, PF_SpeciesID, PF_VamdcSpeciesID, datetime(PF_Timestamp) FROM Partitionfunctions ")
         rows = cursor.fetchall()
         num_rows = len(rows)
-        query = Query()
-        result = Result()
+        query = q.Query()
+        result = results.Result()
 
         for row in rows:
             counter += 1
-            print "%5d/%5d: Check specie %-55s (%-15s): " % (counter,num_rows, row[0],row[1]),
+            print "%5d/%5d: Check specie %-55s (%-15s): " % (counter, num_rows, row[0], row[1]),
             #id = row[1]
             vamdcspeciesid = row[2]
 #            query_string = "SELECT ALL WHERE VAMDCSpeciesID='%s'" % vamdcspeciesid
             query_string = "SELECT ALL WHERE SpeciesID=%s" % row[1][6:]
             query.set_query(query_string)
             query.set_node(node)
-            
+
             result.set_query(query)
             try:
                 changedate = result.getChangeDate()
             except:
                 changedate = None
-                
-            tstamp = parser.parse(row[3]+" GMT")
+
+            tstamp = parser.parse(row[3] + " GMT")
             if changedate is None:
                 print " -- UNKNOWN (Could not retrieve information)"
                 continue
-            if tstamp<changedate:
-                print " -- UPDATE AVAILABLE " 
+            if tstamp < changedate:
+                print " -- UPDATE AVAILABLE "
                 count_updates += 1
             else:
                 print " -- up to date"
@@ -672,7 +674,6 @@ class Database(object):
         if count_updates == 0:
             print "\r No updates for your entries available"
         print "Done"
-
 
     def check_for_new_species(self, node):
         """
@@ -693,14 +694,386 @@ class Database(object):
                 print e
                 print id
         print "There are %d new species available" % counter
-            
-        
-    def showSpecies(self):
+
+    def show_species(self):
 
         cursor = self.conn.cursor()
         cursor.execute("SELECT PF_Name, PF_SpeciesID, PF_VamdcSpeciesID, PF_Timestamp FROM Partitionfunctions")
         rows = cursor.fetchall()
         for row in rows:
-            print "%-10s %-60s %20s %s" % (row[1],row[0],row[2],row[3])
+            print "%-10s %-60s %20s %s" % (row[1], row[0], row[2], row[3])
 
+    def insert_species_data(self, species, node):
+        """
+        """
+
+        # create a list of names. New names have not to be in that list
+        names_black_list = []
         
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT PF_Name FROM Partitionfunctions")
+        rows = cursor.fetchall()
+        for row in rows:
+            names_black_list.append(row[0])
+
+        #----------------------------------------------------------
+        # Create a list of species for which transitions will be
+        # retrieved and inserted in the database.
+        # Species have to be in the Partitionfunctions - table
+
+        if not functions.isiterable(species):
+            species = [species]
+
+        #--------------------------------------------------------------
+
+        for specie in species:
+            num_transitions = {}
+            # will contain a list of names which belong to one specie
+            species_names = {}
+            # list will contain species whose insert-failed
+            species_with_error = []
+
+            # check if specie is of type Molecule
+            if isinstance(specie, specmodel.Molecule):
+                speciesid = specie.SpeciesID
+                vamdcspeciesid = specie.VAMDCSpeciesID
+                formula = specie.OrdinaryStructuralFormula
+            else:
+                try:
+                    if isinstance(specie, str) and len(specie) == 27:
+                        vamdcspeciesid = specie
+                        speciesid = None
+                except:
+                    print "Specie is not of wrong type"
+                    print "Type Molecule or string (Inchikey) is allowed"
+                    continue
+            # Create query string
+            query_string = "SELECT ALL WHERE VAMDCSpeciesID='%s'" % vamdcspeciesid
+            query = q.Query()
+            result = results.Result()
+
+            # Get data from the database
+            query.set_query(query_string)
+            query.set_node(node)
+
+            result.set_query(query)
+            result.do_query()
+            result.populate_model()
+            #---------------------------------------
+
+            cursor = self.conn.cursor()
+            cursor.execute('BEGIN TRANSACTION')
+
+#            cursor.execute("DELETE FROM Transitions WHERE T_Name = ?", (name,))
+
+            for trans in result.RadiativeTransitions:
+                # data might contain transitions for other species (if query is based on ichikey/vamdcspeciesid).
+                # Insert transitions only if they belong to the correct specie
+
+                if result.RadiativeTransitions[trans].SpeciesID == speciesid or speciesid is None:
+                    id = str(result.RadiativeTransitions[trans].SpeciesID)
+                    # if an error has occured already then there will be no further insert
+                    if id in species_with_error:
+                        continue
+                    
+                    formula = str(result.Molecules[id].OrdinaryStructuralFormula)
+                    # Get upper and lower state from the states table
+                    try:
+                        upper_state = result.States["%s" % result.RadiativeTransitions[trans].UpperStateRef]
+                        lower_state = result.States["%s" % result.RadiativeTransitions[trans].LowerStateRef]
+                    except KeyError:
+                        print " -- Error: State is missing"
+                        species_with_error.append(id)
+                        continue
+                        
+                    # Get string which identifies the vibrational states involved in the transition
+                    t_state = self.getvibstatelabel(upper_state, lower_state)
+
+                    # Get hyperfinestructure info if hfsInfo is None
+                    # only then the hfsInfo has not been inserted in the species name
+                    # (there can be multiple values in the complete dataset
+                    t_hfs = ''
+                    try:
+                        for pc in result.RadiativeTransitions[trans].ProcessClass:
+                            if str(pc)[:3] == 'hyp':
+                                t_hfs = str(pc)
+                    except Exception, e:
+                            print "Error: %s", e
+
+                    t_name = "%s; %s; %s" % (formula, t_state, t_hfs)
+                    t_name = t_name.strip()
+                    # check if name is in the list of forbidden names and add counter if so
+                    i = 1
+                    while t_name in names_black_list:
+                        t_name = "%s#%d" % (t_name.split('#')[0], i)
+                        i += 1
+                    # update list of distinct species names.
+                    if id in species_names:
+                        if not t_name in species_names[id]:
+                            species_names[id].append(t_name)
+                            num_transitions[t_name] = 0
+                    else:
+                        species_names[id] = [t_name]
+                        num_transitions[t_name] = 0
+
+                    frequency = result.RadiativeTransitions[trans].FrequencyValue
+                    try:
+                        uncertainty = "%lf" % result.RadiativeTransitions[trans].FrequencyAccuracy
+                    except TypeError:
+                        print " -- Error uncertainty not available"
+                        species_with_error.append(id)
+                        continue
+
+                    # Get statistical weight if present
+                    if upper_state.TotalStatisticalWeight:
+                        weight = int(upper_state.TotalStatisticalWeight)
+                    else:
+                        weight = None
+
+                    # Get nuclear spin isomer (ortho/para) if present
+                    try:
+                        nsiName = upper_state.NuclearSpinIsomerName
+                    except AttributeError:
+                        nsiName = None
+
+                    # Insert transition into database
+                    try:
+                        cursor.execute("""INSERT INTO Transitions (
+                        T_Name,
+                        T_Frequency,
+                        T_EinsteinA,
+                        T_Uncertainty,
+                        T_EnergyLower,
+                        T_UpperStateDegeneracy,
+                        T_HFS,
+                        T_UpperStateQuantumNumbers,
+                        T_LowerStateQuantumNumbers) VALUES
+                        (?, ?,?,?,?, ?,?, ?,?)""",
+                                       (t_name,
+                                        "%lf" % frequency,
+                                        "%lf" % result.RadiativeTransitions[trans].TransitionProbabilityA,
+                                        uncertainty, "%lf" % lower_state.StateEnergyValue,
+                                        weight,
+                                        #upper_state.QuantumNumbers.case,
+                                        t_hfs,
+                                        str(upper_state.QuantumNumbers.qn_string),
+                                        str(lower_state.QuantumNumbers.qn_string),
+                                        ))
+                        num_transitions[t_name] += 1
+                    except Exception, e:
+                        print "Transition has not been inserted:\n Error: %s" % e
+
+            if node:
+                resourceID = node.identifier
+                url = node.url
+            else:
+                resourceID = 'NULL'
+                url = 'NULL'
+
+            # delete transitions for all entries where an error occured during the insert
+            for id in species_with_error:
+                print " -- Species {id} has not been inserted due to an error ".format(id=str(id))
+                try:
+                    for name in species_names[id]:
+                        cursor.execute("DELETE FROM Transitions WHERE T_Name=?", (str(name),))
+                        print " --    {name} ".format(name=str(name))
+                except:
+                    pass
+            # Insert molecules
+            for id in species_names:
+                if id in species_with_error:
+                    continue
+                for name in species_names[id]:
+                    try:
+                        hfs = name_array = name.split(';')[2].strip()
+                    except:
+                        hfs = ''
+
+                    # Insert row in partitionfunctions
+                    try:
+                        cursor.execute("INSERT INTO Partitionfunctions (PF_Name, PF_SpeciesID, PF_VamdcSpeciesID, PF_HFS, PF_Comment, PF_ResourceID, PF_URL, PF_Timestamp) VALUES (?,?,?,?,?,?,?,?)",
+                                       ("%s" % name,
+                                        id,
+                                        "%s" % (result.Molecules[id].VAMDCSpeciesID),
+                                        hfs,
+                                        "%s" % (result.Molecules[id].Comment),
+                                        resourceID,
+                                        "%s%s%s" % (url, "sync?LANG=VSS2&amp;REQUEST=doQuery&amp;FORMAT=XSAMS&amp;QUERY=Select+*+where+SpeciesID%3D", id),
+                                        datetime.now(), ))
+                    except sqlite3.Error as e:
+                        print "An error occurred:", e.args[0]
+                    except Exception as e:
+                        print "An error occurred:", e.args[0]
+                        print result.Molecules.keys()
+
+                # Update Partitionfunctions
+                try:
+                    for pfs in result.Molecules[id].PartitionFunction:
+                        if not pfs['NuclearSpinIsomer']:
+                            for temperature in pfs['Values']:
+
+                                try:
+                                    field = ("PF_%.3lf" % float(temperature)).replace('.', '_')
+                                    sql = "UPDATE Partitionfunctions SET %s=? WHERE PF_SpeciesID=?" % field
+                                    cursor.execute(sql, (pfs['Values'][temperature], id))
+                                except Exception, e:
+                                    print "SQL-Error: %s " % sql
+                                    print pfs['Values'][temperature], id
+                                    print "Error: %d: %s" % (e.args[0], e.args[1])
+                except:
+                    pass
+
+            print "Processed: {speciesid}".format(speciesid = id)
+            for row in num_transitions:
+                print "      for %s inserted %d transitions" % (row, num_transitions[row])
+            self.conn.commit()
+            cursor.close()
+
+    def update_database(self, add_nodes = None):
+        """
+        Checks if there are updates available for all entries. Updates will
+        be retrieved from the resource specified in the database.
+        All resources will be searched for new entries, which will be inserted
+        if available. Additional resources can be specified via add_nodes.
+
+        add_nodes: Single or List of node-instances (nodes.Node)
+        """
+        # counter to identify which entry is currently processed
+        counter = 0
+        # counter to count available updates
+        count_updates = 0
+        # list of database - nodes which are currently in the local database
+        dbnodes = []
+        # create an instance with all available vamdc-nodes
+        nl = nodes.Nodelist()
+
+        # attach additional nodes to the list of dbnodes (for insert)
+        if not functions.isiterable(add_nodes):
+            add_nodes = [add_nodes]
+        for node in add_nodes:
+            if not isinstance(node, nodes.Node):
+                print "Could not attach node. Wrong type, it should be type <nodes.Node>"
+            else:
+                dbnodes.append(node)
+        
+        #--------------------------------------------------------------------
+        # Check if updates are available for entries
+
+        # Get list of species in the database
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT PF_Name, PF_SpeciesID, PF_VamdcSpeciesID, datetime(PF_Timestamp), PF_ResourceID FROM Partitionfunctions ")
+        rows = cursor.fetchall()
+        num_rows = len(rows)
+        query = q.Query()
+        result = results.Result()
+
+        print("----------------------------------------------------------")
+        print "Looking for updates"
+        print("----------------------------------------------------------")
+            
+        for row in rows:
+            counter += 1
+            print "%5d/%5d: Check specie %-55s (%-15s): " % (counter, num_rows, row[0], row[1]),
+            try:
+                node = nl.getnode(str(row[4]))
+            except:
+                node = None
+            if node is None:
+                print " -- RESOURCE NOT AVAILABLE"
+                continue
+            else:
+                if node not in dbnodes:
+                    dbnodes.append(node)
+            
+            vamdcspeciesid = row[2]
+            query_string = "SELECT ALL WHERE SpeciesID=%s" % row[1][6:]
+            query.set_query(query_string)
+            query.set_node(node)
+
+            result.set_query(query)
+            try:
+                changedate = result.getChangeDate()
+            except:
+                changedate = None
+
+            tstamp = parser.parse(row[3] + " GMT")
+            if changedate is None:
+                print " -- UNKNOWN (Could not retrieve information)"
+                continue
+            if tstamp < changedate:
+                print " -- UPDATE AVAILABLE "
+                count_updates += 1
+            else:
+                print " -- up to date"
+
+        if count_updates == 0:
+            print "\r No updates for your entries available"
+        print "Done"
+        # Check if there are new entries available
+
+        #---------------------------------------------------------
+        # Check all dbnodes for new species
+        counter = 0
+        insert_molecules_list = []
+        for node in dbnodes:
+            print("----------------------------------------------------------")
+            print "Query '{dbname}' for new species ".format(dbname=node.name)
+            print("----------------------------------------------------------")
+            node.get_species()
+            for id in node.Molecules:
+                try:
+                    cursor.execute("SELECT PF_Name, PF_SpeciesID, PF_VamdcSpeciesID, PF_Timestamp FROM Partitionfunctions WHERE PF_SpeciesID=?", [(id)])
+                    exist = cursor.fetchone()
+                    if exist is None:
+                        print "   %s" % node.Molecules[id]
+                        insert_molecules_list.append(node.Molecules[id])
+                        counter += 1
+                except Exception, e:
+                    print e
+                    print id
+            print "There are %d new species available" % counter
+            print("----------------------------------------------------------")
+            print "Start insert"
+            print("----------------------------------------------------------")           
+            self.insert_species_data(insert_molecules_list, node)
+            print("----------------------------------------------------------")           
+            print "Done"
+
+    def getvibstatelabel(self, upper_state, lower_state):
+        """
+        """
+
+        # Get string which identifies the vibrational states involved in the transition
+        try:
+            if upper_state.QuantumNumbers.vibstate == lower_state.QuantumNumbers.vibstate:
+                t_state = str(upper_state.QuantumNumbers.vibstate).strip()
+            else:
+                v_dict = {}
+                for label in list(set(upper_state.QuantumNumbers.qns.keys() + lower_state.QuantumNumbers.qns.keys())):
+                    if isVibrationalStateLabel(label):
+                        try:
+                            value_up = upper_state.QuantumNumbers.qns[label]
+                        except:
+                            value_up = 0
+                        try:
+                            value_low = lower_state.QuantumNumbers.qns[label]
+                        except:
+                            value_low = 0
+                        v_dict[label] = [value_up, value_low]
+                v_string = ''
+                valup_string = ''
+                vallow_string = ''
+                for v in v_dict:
+                    v_string += "%s," % v
+                    valup_string += "%s," % v_dict[v][0]
+                    vallow_string += "%s," % v_dict[v][1]
+                if len(v_dict) > 1:
+                    t_state = "(%s)=(%s)-(%s)" % (v_string[:-1], valup_string[:-1], vallow_string[:-1])
+                else:
+                    t_state = "%s=%s-%s" % (v_string[:-1], valup_string[:-1], vallow_string[:-1])
+
+                #t_state = '(%s)-(%s)' % (upper_state.QuantumNumbers.vibstate,lower_state.QuantumNumbers.vibstate)
+        except:
+                t_state = ''
+
+        return t_state

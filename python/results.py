@@ -10,7 +10,7 @@ from httplib import HTTPConnection
 
 from dateutil.parser import parse
 
-XSD = "http://vamdc.org/xml/xsams/0.3"
+XSD = "http://vamdc.org/xml/xsams/1.0"
 
 class Result(object):
 
