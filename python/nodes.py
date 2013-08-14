@@ -13,7 +13,7 @@ class Nodelist(object):
     def __init__(self):
         self.nodes = []
         for node in getNodeList():
-            self.nodes.append(Node(node['name'], url=node['url']))
+            self.nodes.append(Node(node['name'], url=node['url'], identifier = node['identifier']))
 
     def __repr__(self):
         """
@@ -30,9 +30,10 @@ class Node(object):
     This class contains informations and methods associated with one (VAMDC) database node,
     such as its access url (for database queries) and its name.    
     """
-    def __init__(self, name, url=None):
+    def __init__(self, name, url=None, identifier = None):
         self.name=name
         self.url=url
+        self.identifier = identifier
 
     def __repr__(self):
         """
@@ -74,11 +75,11 @@ class Node(object):
         try:
             print "List of Atoms: "
             for atom in self.Atoms:
-                print self.Atoms[atom]
+                print("%s" % self.Atoms[atom])
     
             print "List of Molecules: "
             for molecule in self.Molecules:
-                print self.Molecules[molecule]
+                print("%s" % self.Molecules[molecule])
 
         except Exception, e:
             print "Could not retrieve list of species: %s" % e

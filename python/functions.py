@@ -6,6 +6,9 @@ from copy import deepcopy
 NAMESPACE='http://vamdc.org/xml/xsams/0.3'
 NSMAP = {'ns':NAMESPACE}
 
+# Helper function to test if an object is a list or tuple
+isiterable = lambda obj: hasattr(obj, '__iter__')
+
 def match_states(states1, states2):
     """
     Identifies equal states
@@ -200,4 +203,4 @@ def get_species_element(xml,id):
 def apply_stylesheet(xml, xsl):
     
     xsl=e.XSLT(e.parse(xsl))
-    return xsl(xml)) 
+    return xsl(xml)

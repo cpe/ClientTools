@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-NAMESPACE='http://vamdc.org/xml/xsams/0.3'
+from functions import *
+
+NAMESPACE='http://vamdc.org/xml/xsams/1.0'
 
 # Todo: How to include multiple occurances of one tag!?
 
@@ -12,6 +14,8 @@ RADIATIVETRANS_DICT={
     "TransitionProbabilityA":"{"+NAMESPACE+"}Probability/{"+NAMESPACE+"}TransitionProbabilityA/{"+NAMESPACE+"}Value",
     "Log10WeightedOscillatorStrength":"{"+NAMESPACE+"}Probability/{"+NAMESPACE+"}Log10WeightedOscillatorStrength/{"+NAMESPACE+"}Value",
     "Multipole":"{"+NAMESPACE+"}Probability/{"+NAMESPACE+"}Multipole",
+    "SpeciesID":"{"+NAMESPACE+"}SpeciesRef",
+    "ProcessClass":"{"+NAMESPACE+"}ProcessClass/{"+NAMESPACE+"}Code[]",
     }
 
 
@@ -23,6 +27,8 @@ STATES_DICT={
     "StateEnergyUnit":"MolecularStateCharacterisation.StateEnergy.Value.get('units')",
     "StateEnergyOrigin":"MolecularStateCharacterisation.StateEnergy.get('energyOrigin')",
     "TotalStatisticalWeight":"MolecularStateCharacterisation.TotalStatisticalWeight",
+    "NuclearSpinIsomerName":"MolecularStateCharacterisation.NuclearSpinIsomer.Name",
+    "NuclearSpinIsomerLowestEnergy":"MolecularStateCharacterisation.NuclearSpinIsomer.get('lowestEnergyStateRef')",
     }
 
 
@@ -37,6 +43,27 @@ ATOMS_DICT={
     "InChIKey":"Isotope.Ion.InChIKey",
     }
 
+MOLECULES_DICT={
+    "SpeciesID":"get('speciesID')",
+    "ChemicalName":"MolecularChemicalSpecies.ChemicalName.Value",
+    "Comment":"MolecularChemicalSpecies.Comment",
+    "InChI":"MolecularChemicalSpecies.InChI",
+    "InChIKey":"MolecularChemicalSpecies.InChIKey",
+    "VAMDCSpeciesID":"MolecularChemicalSpecies.VAMDCSpeciesID",
+    "ChemicalName":"MolecularChemicalSpecies.MoleculeStructure",
+    "OrdinaryStructuralFormula":"MolecularChemicalSpecies.OrdinaryStructuralFormula.Value",
+    "MolecularWeight":"MolecularChemicalSpecies.StableMolecularProperties.MolecularWeight.Value",
+    "StoichiometricFormula":"MolecularChemicalSpecies.StoichiometricFormula",
+    "PartitionFunction":"MolecularChemicalSpecies.PartitionFunction[]",
+    }
+
+PARTITIONFUNCTIONS_DICT={
+    "SpeciesID":"getparent().getparent().get('speciesID')",
+    "NuclearSpinIsomer":"NuclearSpinIsomer.Name",    
+    "PartitionFunctionT":"T.DataList",    
+    "PartitionFunctionQ":"Q.DataList",    
+    "Comments":"Comments",
+    }
 
 COLLISIONALTRANS_DICT={
 
@@ -58,6 +85,20 @@ COLLISIONALTRANS_DICT={
     "Comment":"Comments",
     }
 
+
+def isVibrationalStateLabel(label):
+    """
+    Checks if the label defines a vibrational state
+    """
+    if label[0]!='v':
+        return False
+    try:
+        int(label[1])
+        return True
+    except IndexError:
+        return True
+    except ValueError:
+        return False
 
 def read_element(item):
     """
@@ -100,6 +141,38 @@ def convert_tabulateddata(item):
         datadict[x[i]]=y[i]
 
     return datadict, xunits, yunits, comment
+
+def convert_partitionfunctions(item):
+    """
+    Converts an element of type {..xsams..}abulatedData into a dictionary
+    with elements from X as key and elements from Y as values
+
+    Returns:
+
+    datadict = (dictionary) with datapoints
+    xunits = (string) unit of key elements
+    yunits = (string) containing unit of value elements
+    comment = (string)
+    """
+    
+    T = item.T.DataList.text.split(" ")
+    Q = item.Q.DataList.text.split(" ")
+    Tunits = item.T.get('units')
+    try:
+        nuclearSpinIsomer = item.NuclearSpinIsomer.Name.text
+    except:
+        nuclearSpinIsomer = ""
+    try:
+        comments = item.Comments.text
+    except:
+        comments = ""
+    
+    datadict = {}
+    for i in range(len(T)):
+        datadict[T[i]]=Q[i]
+
+    return datadict, Tunits, comments, nuclearSpinIsomer
+
 
 def convert_fitdata(item):
     """
@@ -200,58 +273,85 @@ class Atom(object):
             
         
 class Molecule(object):
-#    xml = None
-
-#    specieID = None
-#    ChemicalName = None
-#    OrdinaryStructuralFormula = None
-#    StoichiometricFormula = None
-#    Comment = None
-#    InChI = None
-#    InChIKey = None
-#    MolecularWeight = None
-
-#    MoleculeStructure
-
-#    specie.MolecularChemicalSpecies.PartitionFunction.T.DataList
-#    specie.MolecularChemicalSpecies.PartitionFunction.Q.DataList
-
 
     def __init__(self, xml):
         self.xml = xml
-
-        self.specieID = None
-        self.ChemicalName = None
-        self.OrdinaryStructuralFormula = None
-        self.StoichiometricFormula = None
-        self.Comment = None
-        self.InChI = None
-        self.InChIKey = None
-        self.MolecularWeight = None
 
         if self.xml is not None:
             self.readXML(self.xml)
 
     def __repr__(self):
-        return "%s: %s, %s, %s" % (self.specieID, self.OrdinaryStructuralFormula, self.StoichiometricFormula, self.Comment)
+        return "%s: %s, %s, %s, %s" % (self.SpeciesID, self.InChIKey, self.OrdinaryStructuralFormula, self.StoichiometricFormula, unicode(self.Comment))
 
-    
-    def readXML(self, xml):
+    def additem2(self, item, value):
         try:
-            self.specieID = self.xml.get('speciesID')
-            self.ChemicalName = self.xml.MolecularChemicalSpecies.ChemicalName.Value,
-            self.Comment = self.xml.MolecularChemicalSpecies.Comment,
-            self.InChI = self.xml.MolecularChemicalSpecies.InChI,
-            self.InChIKey = self.xml.MolecularChemicalSpecies.InChIKey,
-            #self.ChemicalName = self.xml.MolecularChemicalSpecies.MoleculeStructure
-            self.OrdinaryStructuralFormula = self.xml.MolecularChemicalSpecies.OrdinaryStructuralFormula.Value
-            self.MolecularWeight = self.xml.MolecularChemicalSpecies.StableMolecularProperties.MolecularWeight.Value
-            self.StoichiometricFormula = self.xml.MolecularChemicalSpecies.StoichiometricFormula
-
-            #self.ChemicalName = self.xml.MolecularChemicalSpecies.PartitionFunction.T.DataList
-            #self.ChemicalName = self.xml.MolecularChemicalSpecies.PartitionFunction.Q.DataList
+            setattr(self, item, value)
         except:
             pass
+                
+    def additem(self, item, value):
+        try:
+            if isiterable(value):
+                value_list = []
+                for row in value:
+                    if hasattr(row,'tag') and row.tag=="{%s}PartitionFunction" % NAMESPACE:
+                        pf_list, Tunits, comment, nsi = convert_partitionfunctions(row)
+                        value_list.append({"Values":pf_list, "Unit": Tunits, "Comment":comment, "NuclearSpinIsomer":nsi})
+                        
+                        setattr(self, item, value_list)
+                        #setattr(self, item+"TUnits",Tunits)
+                        #setattr(self, item+"Comment",comment)
+                    else:
+                        setattr(self, item, row)
+            else:
+                setattr(self, item, value)
+        except Exception, e:
+            print "Error occured: %s" % e
+        
+    def readXML(self, xml):
+        for el in MOLECULES_DICT:
+            try:
+
+                if MOLECULES_DICT[el].find("[]")>-1:
+                    iterel = eval("self.xml.%s" % MOLECULES_DICT[el][0:MOLECULES_DICT[el].find("[]")])
+                    num_elements = iterel.__len__()
+                    item = []
+                    for i in range(num_elements):
+                        item.append( eval("self.xml.%s" % MOLECULES_DICT[el].replace("[]","["+str(i)+"]")) )
+
+                else:             
+                    item = eval("self.xml.%s" % MOLECULES_DICT[el])
+
+                self.additem(el, item )
+            except:
+                pass
+
+
+class Partitionfunctions(object):
+
+    def __init__(self, xml):
+        self.xml = xml
+
+        if self.xml is not None:
+            self.readXML(self.xml)
+
+    def __repr__(self):
+        return "%s: %s" % (self.SpeciesID, self.PartitionFunctionT)
+
+        
+    def additem(self, item, value):
+        try:
+            setattr(self, item, value)
+        except:
+            pass
+        
+    def readXML(self, xml):
+        for el in PARTITIONFUNCTIONS_DICT:
+            try:
+                item = eval("self.xml.%s" % PARTITIONFUNCTIONS_DICT[el])
+                self.additem(el, item )
+            except:
+                pass
 
 
 
@@ -270,8 +370,10 @@ class QuantumNumbers(object):
     def __init__(self, xsamsstateel):
         self.xsamsstateel = xsamsstateel
         self.qns = {}
+        self.qn_string = ""
         self.ns = None
         self.case = None
+        self.vibstate = ''
         
         self.case = xsamsstateel.Case.get('caseID')
         self.ns = self.getns()
@@ -280,6 +382,16 @@ class QuantumNumbers(object):
                 label, value, attributes = self.parse_qn(j)
                 self.qns[label]= value
                 #self.qns[j.tag.replace(self.ns,"")] = j
+                self.qn_string += "%s = %s; " % (str(label),str(value))
+
+                if isVibrationalStateLabel(label) and int(value)!=0:
+                    self.vibstate += "%s=%s, " % (str(label),str(value))
+            # remove last ', ' from the string
+            if self.vibstate == '':
+                self.vibstate = 'v=0'
+            else:
+                self.vibstate = self.vibstate[:-2]
+                
 
     def parse_qn(self, qn_element):
         """
@@ -297,12 +409,12 @@ class QuantumNumbers(object):
             if len(item)==2:
                 attributes[item[0]]=item[1]
                 if item[0]=='mode':
-                    label.replace('i',item[1])
-                    label.replace('j',item[1])
+                    label = label.replace('i',item[1])
+                    label = label.replace('j',item[1])
                 elif item[0]=='j':
-                    label.replace('j',item[1])
+                    label = label.replace('j',item[1])
                 elif item[0]=='i':
-                    label.replace('i',item[1])
+                    label = label.replace('i',item[1])
                 elif item[0]=='nuclearSpinRef':
                     label="%s_%s" % (label, item[1])
             elif len(item)==1:
@@ -404,7 +516,17 @@ class RadiativeTransition(object):
         
     def readXML(self, xml):
         for el in RADIATIVETRANS_DICT:
-            item=xml.find(RADIATIVETRANS_DICT[el])
+            
+            if RADIATIVETRANS_DICT[el].find("[]")>-1:
+                #iterel = eval("self.xml.%s" % RADIATIVETRANS_DICT[el][0:RADIATIVETRANS_DICT[el].find("[]")])
+                item = xml.findall(RADIATIVETRANS_DICT[el][:-2])
+                #num_elements = iterel.__len__()
+#                item = []
+ #               for i in iterel:
+  #                  item.append(i)
+            else:            
+                item=xml.find(RADIATIVETRANS_DICT[el])
+
             self.additem(el, item )
             # check for attributes
             try:
@@ -413,6 +535,8 @@ class RadiativeTransition(object):
             except:
                 pass
             
+    def __repr__(self):
+        return "%s: %s, %s, %s" % (self.Id, self.FrequencyValue, self.FrequencyAccuracy, self.TransitionProbabilityA)
 
 
 class CollisionalTransition(object):

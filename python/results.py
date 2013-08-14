@@ -5,6 +5,11 @@ import urllib2
 from specmodel import *
 from query import *
 
+from urlparse import urlparse
+from httplib import HTTPConnection
+
+from dateutil.parser import parse
+
 XSD = "http://vamdc.org/xml/xsams/0.3"
 
 class Result(object):
@@ -25,6 +30,64 @@ class Result(object):
 
     def do_query(self):
         self.get_xml(self.Source.Requesturl)
+
+
+    def doHeadRequest(self, timeout = 20):
+        """
+        Does a HEAD request on the given url.
+        A list of 'vamdc' - statistic objects is returned
+        """
+    
+        urlobj = urlparse(self.Source.Requesturl)
+
+        try:
+            conn = HTTPConnection(urlobj.netloc, timeout = timeout)
+            conn.request("HEAD", urlobj.path+"?"+urlobj.query)
+            res = conn.getresponse()
+        except:
+            # error handling has to be included
+            vamdccounts = [] #[('error', 'no response')]
+            return vamdccounts        
+
+        return_dict = {}
+
+        for item in res.getheaders():
+            return_dict[item[0]] = item[1]
+#        if res.status == 200:
+#            vamdccounts = [item for item in res.getheaders() if item[0][0:5]=='vamdc']
+#            content = [item for item in res.getheaders() if item[0][0:7]=='content']
+#        elif res.status == 204:
+#            vamdccounts = [ ("vamdc-count-species",0),
+#                            ("vamdc-count-states",0),
+#                            ("vamdc-truncated",0),
+#                            ("vamdc-count-molecules",0),
+#                            ("vamdc-count-sources",0),
+#                            ("vamdc-approx-size",0),
+#                            ("vamdc-count-radiative",0),
+#                            ("vamdc-count-atoms",0)]
+#        else:
+#            vamdccounts =  [("vamdc-count-species",0),
+#                            ("vamdc-count-states",0),
+#                            ("vamdc-truncated",0),
+#                            ("vamdc-count-molecules",0),
+#                            ("vamdc-count-sources",0),
+#                            ("vamdc-approx-size",0),
+#                            ("vamdc-count-radiative",0),
+#                            ("vamdc-count-atoms",0)]
+            
+        return return_dict
+
+
+
+    def getChangeDate(self):
+        rdict = self.doHeadRequest()
+        try:
+            d = parse(rdict['last-modified'])
+        except Exception, e:
+            print rdict
+            print e
+        
+        return d
 
         
     def get_xml(self, source):
@@ -91,7 +154,7 @@ class Result(object):
 
             for molecule in self.root.Species.Molecules.Molecule:
                 mol = Molecule(molecule)
-                Molecules[mol.specieID]=mol
+                Molecules[mol.SpeciesID]=mol
 
                 if molecule.__dict__.has_key('MolecularState'):
 
@@ -122,6 +185,39 @@ class Result(object):
         self.CollisionalTransitions = Coltranss
 
 
+    def get_vibstates(self):
+
+        vibs = {}
+        for qn in self.States:
+            vib = ''
+            for l in self.States[qn].QuantumNumbers.qns:
+                if isVibrationalStateLabel(l):
+                    vib += "%s=%s, " % (l,self.States[qn].QuantumNumbers.qns[l])
+            # remove last ', ' from the string
+            vib = vib[:-2]
+            try:
+                if vib not in vibs[self.States[qn].SpecieID]:
+                    vibs[self.States[qn].SpecieID].append(vib)
+            except KeyError:
+                vibs[self.States[qn].SpecieID] = [vib]
+                    
+        return vibs
+
+    def get_process_class(self):
+
+        classes = {}
+        for trans in self.root.Processes.Radiative.RadiativeTransition:
+            codes = []
+            for code in trans.ProcessClass.Code:
+                codes.append(code)
+            try:
+                if codes not in classes[str(trans.SpeciesRef)]:
+                    classes[str(trans.SpeciesRef)].append(codes)
+            except KeyError:
+                classes[str(trans.SpeciesRef)] = [codes]
+
+        return classes
+    
     def validate(self):
 
         if not hasattr(self, 'xsd'):
