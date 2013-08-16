@@ -3,7 +3,7 @@ from lxml import objectify
 from lxml import etree
 import urllib2
 from specmodel import *
-from query import *
+import query as q
 
 from urlparse import urlparse
 from httplib import HTTPConnection
@@ -23,7 +23,7 @@ class Result(object):
         #    self.get_xml(self.Source)
 
     def set_query(self,query):
-        if type(query)==Query:
+        if type(query)==q.Query:
             self.Source = query
         else:
             print "Warning: this is not a query object"
