@@ -703,8 +703,14 @@ class Database(object):
         for row in rows:
             print "%-10s %-60s %20s %s" % (row[1], row[0], row[2], row[3])
 
-    def insert_species_data(self, species, node):
+    def insert_species_data(self, species, node, update=False):
         """
+        Inserts new species into the local database
+
+        species: species which will be inserted
+        node:    vamdc-node / type: instance(nodes.node)
+        update:  if True then all entries in the local database with the same
+                 species-id will be deleted before the insert is performed.
         """
 
         # create a list of names. New names have not to be in that list
@@ -774,8 +780,20 @@ class Database(object):
             cursor = self.conn.cursor()
             cursor.execute('BEGIN TRANSACTION')
 
-#            cursor.execute("DELETE FROM Transitions WHERE T_Name = ?", (name,))
-
+            #------------------------------------------------------------------------------------------------------
+            # if update is allowed then all entries in the database for the given species-id will be
+            # deleted, and thus replaced by the new data
+            if update:
+                cursor.execute("SELECT PF_Name FROM Partitionfunctions WHERE PF_SpeciesID = ?", (specie, ))
+                rows = cursor.fetchall()
+                for row in rows:
+                    names_black_list.remove(row[0])
+                    cursor.execute("DELETE FROM Transitions WHERE T_Name = ?", (row[0], ))
+                    cursor.execute("DELETE FROM Partitionfunctions WHERE PF_Name = ?", (row[0], ))
+            #------------------------------------------------------------------------------------------------------
+            
+            #------------------------------------------------------------------------------------------------------
+            # Insert all transitions
             for trans in result.RadiativeTransitions:
                 # data might contain transitions for other species (if query is based on ichikey/vamdcspeciesid).
                 # Insert transitions only if they belong to the correct specie
@@ -874,14 +892,9 @@ class Database(object):
                         num_transitions[t_name] += 1
                     except Exception, e:
                         print "Transition has not been inserted:\n Error: %s" % e
+            #------------------------------------------------------------------------------------------------------
 
-            if node:
-                resourceID = node.identifier
-                url = node.url
-            else:
-                resourceID = 'NULL'
-                url = 'NULL'
-
+            #------------------------------------------------------------------------------------------------------
             # delete transitions for all entries where an error occured during the insert
             for id in species_with_error:
                 print " -- Species {id} has not been inserted due to an error ".format(id=str(id))
@@ -891,6 +904,17 @@ class Database(object):
                         print " --    {name} ".format(name=str(name))
                 except:
                     pass
+
+            #------------------------------------------------------------------------------------------------------
+            # insert specie in Partitionfunctions (header) table
+            if node:
+                resourceID = node.identifier
+                url = node.url
+            else:
+                resourceID = 'NULL'
+                url = 'NULL'
+                
+
             # Insert molecules
             for id in species_names:
                 if id in species_with_error:
@@ -934,13 +958,14 @@ class Database(object):
                                     print "Error: %d: %s" % (e.args[0], e.args[1])
                 except:
                     pass
+            #------------------------------------------------------------------------------------------------------
 
             for row in num_transitions:
                 print "      for %s inserted %d transitions" % (row, num_transitions[row])
             self.conn.commit()
             cursor.close()
 
-    def update_database(self, add_nodes = None, insert_only=False):
+    def update_database(self, add_nodes = None, insert_only = False, update_only = False):
         """
         Checks if there are updates available for all entries. Updates will
         be retrieved from the resource specified in the database.
@@ -1017,6 +1042,16 @@ class Database(object):
                 if tstamp < changedate:
                     print " -- UPDATE AVAILABLE "
                     count_updates += 1
+                    print " -- PERFORM UPDATE -- "
+                    query_string = "SELECT SPECIES WHERE SpeciesID=%s" % row[1][6:]
+                    query.set_query(query_string)
+                    query.set_node(node)
+
+                    result.set_query(query)
+                    result.do_query()
+                    result.populate_model()
+                    insert_species_data(result.Molecules, update = True)
+                    print " -- UPDATE DONE    -- "
                 else:
                     print " -- up to date"
 
@@ -1039,6 +1074,9 @@ class Database(object):
                         dbnodes.append(node)
 
 
+        if update_only:
+            return
+        
         # Check if there are new entries available
 
         #---------------------------------------------------------
