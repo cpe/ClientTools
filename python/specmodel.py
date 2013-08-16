@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import functions 
+import numpy
 
 NAMESPACE='http://vamdc.org/xml/xsams/1.0'
 
@@ -651,3 +652,26 @@ class State(object):
 
             
         return False
+
+
+def calculate_partitionfunction(states, temperature = 300.0):
+
+    pfs = {}
+    distinct_list = {}
+    # create a distinct list of states
+    for state in states:
+        id = states[state].SpecieID
+        qn_string = states[state].QuantumNumbers.qn_string
+        
+        if not id in distinct_list:
+            distinct_list[id] = {}
+        distinct_list[id][qn_string] = states[state]
+
+    for specie in distinct_list:
+        pfs[specie] = 0
+        for state in distinct_list[specie]:
+            pfs[specie] += int(distinct_list[specie][state].TotalStatisticalWeight) * numpy.exp(-1.43878*distinct_list[specie][state].StateEnergyValue/temperature)
+            
+
+    return pfs
+        

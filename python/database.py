@@ -747,18 +747,28 @@ class Database(object):
                     print "Specie is not of wrong type"
                     print "Type Molecule or string (Inchikey) is allowed"
                     continue
-            # Create query string
-            query_string = "SELECT ALL WHERE VAMDCSpeciesID='%s'" % vamdcspeciesid
-            query = q.Query()
-            result = results.Result()
+            if speciesid:
+                print "Processing: {speciesid}".format(speciesid = speciesid)
+            else:
+                print "Processing: {vamdcspeciesid}".format(vamdcspeciesid = vamdcspeciesid)
+                
 
-            # Get data from the database
-            query.set_query(query_string)
-            query.set_node(node)
+            try:
+                # Create query string
+                query_string = "SELECT ALL WHERE VAMDCSpeciesID='%s'" % vamdcspeciesid
+                query = q.Query()
+                result = results.Result()
 
-            result.set_query(query)
-            result.do_query()
-            result.populate_model()
+                # Get data from the database
+                query.set_query(query_string)
+                query.set_node(node)
+
+                result.set_query(query)
+                result.do_query()
+                result.populate_model()
+            except:
+                print " -- Error: Could not fetch and process data"
+                continue    
             #---------------------------------------
 
             cursor = self.conn.cursor()
@@ -825,11 +835,13 @@ class Database(object):
                         continue
 
                     # Get statistical weight if present
-                    if upper_state.TotalStatisticalWeight:
+                    try:
                         weight = int(upper_state.TotalStatisticalWeight)
-                    else:
-                        weight = None
-
+                    except:
+                        print " -- Error statistical weight not available"
+                        species_with_error.append(id)
+                        continue
+                        
                     # Get nuclear spin isomer (ortho/para) if present
                     try:
                         nsiName = upper_state.NuclearSpinIsomerName
@@ -923,13 +935,12 @@ class Database(object):
                 except:
                     pass
 
-            print "Processed: {speciesid}".format(speciesid = id)
             for row in num_transitions:
                 print "      for %s inserted %d transitions" % (row, num_transitions[row])
             self.conn.commit()
             cursor.close()
 
-    def update_database(self, add_nodes = None):
+    def update_database(self, add_nodes = None, insert_only=False):
         """
         Checks if there are updates available for all entries. Updates will
         be retrieved from the resource specified in the database.
@@ -951,7 +962,9 @@ class Database(object):
         if not functions.isiterable(add_nodes):
             add_nodes = [add_nodes]
         for node in add_nodes:
-            if not isinstance(node, nodes.Node):
+            if node is None:
+                pass
+            elif not isinstance(node, nodes.Node):
                 print "Could not attach node. Wrong type, it should be type <nodes.Node>"
             else:
                 dbnodes.append(node)
@@ -967,48 +980,65 @@ class Database(object):
         query = q.Query()
         result = results.Result()
 
-        print("----------------------------------------------------------")
-        print "Looking for updates"
-        print("----------------------------------------------------------")
-            
-        for row in rows:
-            counter += 1
-            print "%5d/%5d: Check specie %-55s (%-15s): " % (counter, num_rows, row[0], row[1]),
-            try:
-                node = nl.getnode(str(row[4]))
-            except:
-                node = None
-            if node is None:
-                print " -- RESOURCE NOT AVAILABLE"
-                continue
-            else:
-                if node not in dbnodes:
-                    dbnodes.append(node)
-            
-            vamdcspeciesid = row[2]
-            query_string = "SELECT ALL WHERE SpeciesID=%s" % row[1][6:]
-            query.set_query(query_string)
-            query.set_node(node)
+        if not insert_only:
+            print("----------------------------------------------------------")
+            print "Looking for updates"
+            print("----------------------------------------------------------")
 
-            result.set_query(query)
-            try:
-                changedate = result.getChangeDate()
-            except:
-                changedate = None
+            for row in rows:
+                counter += 1
+                print "%5d/%5d: Check specie %-55s (%-15s): " % (counter, num_rows, row[0], row[1]),
+                try:
+                    node = nl.getnode(str(row[4]))
+                except:
+                    node = None
+                if node is None:
+                    print " -- RESOURCE NOT AVAILABLE"
+                    continue
+                else:
+                    if node not in dbnodes:
+                        dbnodes.append(node)
 
-            tstamp = parser.parse(row[3] + " GMT")
-            if changedate is None:
-                print " -- UNKNOWN (Could not retrieve information)"
-                continue
-            if tstamp < changedate:
-                print " -- UPDATE AVAILABLE "
-                count_updates += 1
-            else:
-                print " -- up to date"
+                vamdcspeciesid = row[2]
+                query_string = "SELECT ALL WHERE SpeciesID=%s" % row[1][6:]
+                query.set_query(query_string)
+                query.set_node(node)
 
-        if count_updates == 0:
-            print "\r No updates for your entries available"
-        print "Done"
+                result.set_query(query)
+                try:
+                    changedate = result.getChangeDate()
+                except:
+                    changedate = None
+
+                tstamp = parser.parse(row[3] + " GMT")
+                if changedate is None:
+                    print " -- UNKNOWN (Could not retrieve information)"
+                    continue
+                if tstamp < changedate:
+                    print " -- UPDATE AVAILABLE "
+                    count_updates += 1
+                else:
+                    print " -- up to date"
+
+            if count_updates == 0:
+                print "\r No updates for your entries available"
+            print "Done"
+        else:
+            cursor.execute("SELECT distinct PF_ResourceID FROM Partitionfunctions ")
+            rows = cursor.fetchall()
+            for row in rows:
+                try:
+                    node = nl.getnode(str(row[0]))
+                except:
+                    node = None
+                if node is None:
+                    print " -- RESOURCE NOT AVAILABLE"
+                    continue
+                else:
+                    if node not in dbnodes:
+                        dbnodes.append(node)
+
+
         # Check if there are new entries available
 
         #---------------------------------------------------------
@@ -1041,39 +1071,48 @@ class Database(object):
 
     def getvibstatelabel(self, upper_state, lower_state):
         """
+        create a vibrational state label for a transition
+        in:
+           upper_state = state instance of the upper state
+           lower_state = state instance of the lower state
+        returns:
+          string = vibrational label for the transition
         """
 
         # Get string which identifies the vibrational states involved in the transition
-        try:
-            if upper_state.QuantumNumbers.vibstate == lower_state.QuantumNumbers.vibstate:
-                t_state = str(upper_state.QuantumNumbers.vibstate).strip()
+        if upper_state.QuantumNumbers.vibstate == lower_state.QuantumNumbers.vibstate:
+            t_state = str(upper_state.QuantumNumbers.vibstate).strip()
+        else:
+            v_dict = {}
+            for label in list(set(upper_state.QuantumNumbers.qns.keys() + lower_state.QuantumNumbers.qns.keys())):
+                if functions.isVibrationalStateLabel(label):
+                    try:
+                        value_up = upper_state.QuantumNumbers.qns[label]
+                    except:
+                        value_up = 0
+                    try:
+                        value_low = lower_state.QuantumNumbers.qns[label]
+                    except:
+                        value_low = 0
+                    v_dict[label] = [value_up, value_low]
+            v_string = ''
+            valup_string = ''
+            vallow_string = ''
+            for v in v_dict:
+                v_string += "%s," % v
+                valup_string += "%s," % v_dict[v][0]
+                vallow_string += "%s," % v_dict[v][1]
+            # do not distinct between upper and lower state
+            # create just one label for both cases
+            if valup_string < vallow_string:
+                dummy = vallow_string
+                vallow_string = valup_string
+                valup_string = dummy
+            if len(v_dict) > 1:
+                t_state = "(%s)=(%s)-(%s)" % (v_string[:-1], valup_string[:-1], vallow_string[:-1])
             else:
-                v_dict = {}
-                for label in list(set(upper_state.QuantumNumbers.qns.keys() + lower_state.QuantumNumbers.qns.keys())):
-                    if isVibrationalStateLabel(label):
-                        try:
-                            value_up = upper_state.QuantumNumbers.qns[label]
-                        except:
-                            value_up = 0
-                        try:
-                            value_low = lower_state.QuantumNumbers.qns[label]
-                        except:
-                            value_low = 0
-                        v_dict[label] = [value_up, value_low]
-                v_string = ''
-                valup_string = ''
-                vallow_string = ''
-                for v in v_dict:
-                    v_string += "%s," % v
-                    valup_string += "%s," % v_dict[v][0]
-                    vallow_string += "%s," % v_dict[v][1]
-                if len(v_dict) > 1:
-                    t_state = "(%s)=(%s)-(%s)" % (v_string[:-1], valup_string[:-1], vallow_string[:-1])
-                else:
-                    t_state = "%s=%s-%s" % (v_string[:-1], valup_string[:-1], vallow_string[:-1])
+                t_state = "%s=%s-%s" % (v_string[:-1], valup_string[:-1], vallow_string[:-1])
 
-                #t_state = '(%s)-(%s)' % (upper_state.QuantumNumbers.vibstate,lower_state.QuantumNumbers.vibstate)
-        except:
-                t_state = ''
+            #t_state = '(%s)-(%s)' % (upper_state.QuantumNumbers.vibstate,lower_state.QuantumNumbers.vibstate)
 
         return t_state
