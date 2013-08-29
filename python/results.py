@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
-from lxml import objectify
-from lxml import etree
+try:
+    from lxml import objectify
+    is_available_xml_objectify = True
+except ImportError:
+    is_available_xml_objectify = False
+ 
+from xml.etree import ElementTree
 import urllib2
 from specmodel import *
 import query as q
@@ -120,6 +125,10 @@ class Result(object):
         - a file-like object
         - a URL using the HTTP or FTP protocol
         """
+
+        if not is_available_xml_objectify:
+            print "Module lxml.objectify not available"
+            return
         
         try:
             self.root = objectify.XML(self.Xml)
@@ -136,53 +145,10 @@ class Result(object):
         """
 
         if not hasattr(self, 'root'):
-            self.objectify()
+            self.root = ElementTree.fromstring(self.Xml)
+        #    self.objectify()
 
-        Atoms={}
-        Molecules={}
-        Radtranss={}
-        Coltranss={}
-        States={}
-
-        if self.root.Species.__dict__.has_key('Atoms'):
-
-            for atom in self.root.Species.Atoms.Atom:
-                at = Atom(atom)
-                Atoms[at.SpeciesID]=at
-
-        if self.root.Species.__dict__.has_key('Molecules'):
-
-            for molecule in self.root.Species.Molecules.Molecule:
-                mol = Molecule(molecule)
-                Molecules[mol.SpeciesID]=mol
-
-                if molecule.__dict__.has_key('MolecularState'):
-
-                    for state in molecule.MolecularState:
-                        st = State(state)
-                        States[st.StateID]=st
-
-        if self.root.__dict__.has_key('Processes'):
-            if self.root.Processes.__dict__.has_key('Radiative'):
-                if self.root.Processes.Radiative.__dict__.has_key('RadiativeTransition'):
-    
-                    for radtrans in self.root.Processes.Radiative.RadiativeTransition:
-                        rt = RadiativeTransition(radtrans)
-                        Radtranss[rt.Id]=rt
-
-            if self.root.Processes.__dict__.has_key('Collisions'):
-                if self.root.Processes.Collisions.__dict__.has_key('CollisionalTransition'):
-    
-                    for coltrans in self.root.Processes.Collisions.CollisionalTransition:
-                        ct = CollisionalTransition(coltrans)
-                        Coltranss[ct.Id]=ct
-
-
-        self.Atoms = Atoms
-        self.Molecules = Molecules
-        self.States = States
-        self.RadiativeTransitions = Radtranss
-        self.CollisionalTransitions = Coltranss
+        self.data = populate_models(self.root)
 
 
     def get_vibstates(self):
