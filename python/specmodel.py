@@ -2,102 +2,12 @@
 import functions 
 import numpy
 
+from basemodel import *
+#import basemodel
+
+
 NAMESPACE='http://vamdc.org/xml/xsams/1.0'
 
-def construct_model(dictionary):
-
-    model = {}
-    for field in dictionary:
-        code = ""
-        code_add = ""
-        iterator_code = None
-        
-        if dictionary[field].find("\\")>-1:
-            path_array, function = dictionary[field].split("\\")
-            path_array = path_array.split(".")
-        else:
-            function = None
-            path_array = dictionary[field].split(".")
-            
-        for tag in path_array:
-            # is an attribute
-            if tag[0] == '@':
-                #if len(code)>0:
-                #    code = "find('%s')." % code[:-1]
-                code_add = "get('%s')" % (tag[1:],)
-                # attribute can only at the last position
-                break
-            # xpath expression -> do not attach namespace
-            elif tag[-2:] == '[]' and tag[0] in ['*','.','/']:
-                iterator_code = "self.xml.findall('%s%s')" % (code, tag[:-2])
-                code = ""
-            elif tag[-2:] == '[]':
-                iterator_code = "self.xml.findall('%s{%s}%s')" % (code, NAMESPACE, tag[:-2])
-                code = ""
-                # if another tag follows loop has to go on otherwise add text
-#                if tag == path_array[-1]:
-#                    code = "[el.text for el in %s]" % code
-#                    break
-#                else:
-#                    list_code = code
-#                    code = "el."
-            elif tag[0] in ['*','.','/']:
-                code += "%s/" % tag
-            # regular element -> attach namespace
-            else:
-                code += "{%s}%s/" % (NAMESPACE, tag)
-                # put path into find() if it is the last tag
-
-#            if tag == path_array[-1]:
-#                code = "self.xml.find('%s').text" % code[:-1]
-
-        # create code to generate a list if there was an iterable element
-        if iterator_code is not None:
-            if len(code) == 0:
-                if function is not None:
-                    if function == 'self':
-                        code = "[el for el in %s]" % (iterator_code)
-                    else:    
-                        code = "[%s(el) for el in %s]" % (function, iterator_code)
-                elif len(code_add) == 0:
-                    code = "[el.text for el in %s]" % (iterator_code)
-                else:
-                    code = "[el.%s for el in %s]" % (code_add, iterator_code)
-            else:
-                if function is not None:
-                    if function == 'self':
-                        code = "[el.%s for el in %s]" % (code[:-1], iterator_code)
-                    else:
-                        code = "[%s(el.%s) for el in %s]" % (function, code[:-1], iterator_code)
-                elif len(code_add) == 0:
-                    code = "[el.%stext for el in %s]" % (code, iterator_code)
-                    
-        else:
-            if len(code) == 0:
-                if function is not None:
-                    if function == 'self':
-                        code = "self.xml"
-                    else:
-                        code = "%s(self.xml)" % (function,)
-                elif len(code_add) > 0:
-                    code = "self.xml.%s" % (code_add,)
-                else:
-                    print "ERROR --------" 
-            else:
-                if function is not None:
-                    if function == 'self':
-                        code = "self.xml.find('%s')" % (code[:-1],)
-                    else:
-                        code = "%s(self.xml.find('%s'))" % (function, code[:-1],)
-                elif len(code_add) > 0:
-                    code = "self.xml.find('%s').%s" % (code[:-1], code_add,)
-                else:
-                    code = "self.xml.find('%s').text" % (code[:-1],)
-#                code = "text"
-#            code = "el.%s for el in %s" % (code, list_code)
-        model[field] = code
-    return model
-                
 MAIN_DICT = {
     "Atoms":"Species.Atoms.Atom[]\\self",
     "Molecules":"Species.Molecules.Molecule[]\\self",
@@ -112,14 +22,14 @@ RADIATIVETRANS_DICT = {
     "FrequencyValue":"EnergyWavelength.Frequency.Value",
     "FrequencyAccuracy":"EnergyWavelength.Frequency.Accuracy",
     "TransitionProbabilityA":"Probability.TransitionProbabilityA.Value",
-    "Log10WeightedOscillatorStrength":"Probability.Log10WeightedOscillatorStrength.Value",
+    "IdealisedIntensity":"Probability.IdealisedIntensity.Value",
     "Multipole":"Probability.Multipole",
     "SpeciesID":"SpeciesRef",
     "ProcessClass":"ProcessClass.Code[]",
     }
 
-
 STATES_DICT = {
+    "Id":"@stateID",
     "StateID":"@stateID",
 #    "SpecieID":"getparent().get('speciesID')",
 #    "InChIKey":"getparent().MolecularChemicalSpecies.InChIKey",    
@@ -132,8 +42,8 @@ STATES_DICT = {
     "QuantumNumbers":"Case\\QuantumNumbers",
     }
 
-
 ATOMS_DICT = {
+    "Id":"Isotope.Ion.@speciesID",
     "SpeciesID":"Isotope.Ion.@speciesID",
     "ChemicalElementNuclearCharge":"ChemicalElement.NuclearCharge",
     "ChemicalElementSymbol":"ChemicalElement.ElementSymbol",
@@ -144,8 +54,8 @@ ATOMS_DICT = {
     "InChIKey":"Isotope.Ion.InChIKey",
     }
 
-
 MOLECULES_DICT = {
+    "Id":"@speciesID",
     "SpeciesID":"@speciesID",
     "ChemicalName":"MolecularChemicalSpecies.ChemicalName.Value",
     "Comment":"MolecularChemicalSpecies.Comment",
@@ -170,7 +80,6 @@ PARTITIONFUNCTIONS_DICT = {
     }
 
 COLLISIONALTRANS_DICT = {
-
     "Id":"@id",
     "ProcessClassCode":"ProcessClass.Code",
     "Reactant":"Reactant[].SpeciesRef",
@@ -193,14 +102,43 @@ QUANTUMNUMBERS_DICT = {
     "Case":"@caseID",
     "__qnelements__":"*.*[]\\self",
 }
-MAIN_MODEL = construct_model(MAIN_DICT)
-ATOMS_MODEL = construct_model(ATOMS_DICT)
-MOLECULES_MODEL = construct_model(MOLECULES_DICT)
-STATES_MODEL = construct_model(STATES_DICT)
+
+##MAIN_MODEL = construct_model(MAIN_DICT)
+###ATOMS_MODEL = construct_model(ATOMS_DICT)
+###MOLECULES_MODEL = construct_model(MOLECULES_DICT)
+###STATES_MODEL = construct_model(STATES_DICT)
 PARTITIONFUNCTIONS_MODEL = construct_model(PARTITIONFUNCTIONS_DICT)
-COLLISIONALTRANS_MODEL = construct_model(COLLISIONALTRANS_DICT)
-RADIATIVETRANS_MODEL = construct_model(RADIATIVETRANS_DICT)
-QUANTUMNUMBERS_MODEL = construct_model(QUANTUMNUMBERS_DICT)
+##COLLISIONALTRANS_MODEL = construct_model(COLLISIONALTRANS_DICT)
+###RADIATIVETRANS_MODEL = construct_model(RADIATIVETRANS_DICT)
+##QUANTUMNUMBERS_MODEL = construct_model(QUANTUMNUMBERS_DICT)
+
+
+###############################
+# Functions for the models
+#------------------------------------
+def states__eq__(self,other):
+    
+    # There should be also a check for specie's inchikey
+    if self.InChIKey != other.InChIKey:
+        return False
+    # Check if quantum numbers agree
+    if self.QuantumNumbers != other.QuantumNumbers:
+        return False
+    
+    return True
+
+def states__ne__(self,other):
+
+    # There should be also a check for specie's inchikey
+    if self.InChIKey != other.InChIKey:
+        return True
+
+    # Check if quantum numbers agree
+    if self.QuantumNumbers != other.QuantumNumbers:
+        return True
+
+    return False
+
 
 def isVibrationalStateLabel(label):
     """
@@ -215,23 +153,6 @@ def isVibrationalStateLabel(label):
         return True
     except ValueError:
         return False
-
-def read_element(item):
-    """
-    """
-    try:
-        return eval(item)
-    except:
-        return None
-
-def read_element2(item,path):
-    """
-    """
-    print item, path
-    try:
-        return eval("item.path")
-    except:
-        return None
 
 def convert_tabulateddata(item):
     """
@@ -288,6 +209,7 @@ def convert_partitionfunctions(item):
 
     return {"Values":datadict, "Unit": Tunits, "Comment":comments, "NuclearSpinIsomer":nuclearSpinIsomer}
 
+register_method(convert_partitionfunctions)
 
 def convert_fitdata(item):
     """
@@ -361,95 +283,58 @@ def convert_fitdata(item):
 
     return {'parameters':parameters, 'arguments':arguments, 'function':function}
 
-class Model(object):
 
-    def __init__(self, xml):
-        self.xml = xml
-        
-        if self.xml is not None:
-            self.readXML(self.xml)
-    
-    def additem(self, item, value):
-        try:
-            setattr(self, item, value)
-        except:
-            pass
+DICT_MODELS = {
+    'model_types':[
+        {'Name':'Atom',
+         'Dictionary':ATOMS_DICT,
+         'init_functions':None,
+         'representation_fields':('SpeciesID', 'ChemicalElementSymbol', 'ChemicalElementNuclearCharge', 'InChIKey'),
+         },
+        {'Name':'Molecule',
+         'Dictionary':MOLECULES_DICT,
+         'init_functions':None,
+         'representation_fields':('SpeciesID', 'InChIKey', 'OrdinaryStructuralFormula', 'StoichiometricFormula', 'Comment'),
+         },
+        {'Name':'State',
+         'Dictionary':STATES_DICT,
+         'init_functions':None,
+         'methods':[{'name':'__eq__',
+                     'method':states__eq__},
+                    {'name':'__ne__',
+                     'method':states__ne__}
+                    ],
+         'representation_fields':('StateID', 'StateEnergyValue', 'StateEnergyUnit'),
+         },
+        {'Name':'Partitionfunctions',
+         'Dictionary':PARTITIONFUNCTIONS_DICT,
+         'init_functions':None,
+         'representation_fields':('SpeciesID', 'PartitionFunctionT'),
+         },
+        {'Name':'RadiativeTransition',
+         'Dictionary':RADIATIVETRANS_DICT,
+         'init_functions':None,
+         'representation_fields':('Id', 'FrequencyValue', 'FrequencyAccuracy', 'TransitionProbabilityA'),
+         },
+        ],
+    'dict_types':[
+        {'Name':'Atoms',
+         'Dictionary':{"Atoms":"Species.Atoms.Atom[]\\self"},
+         'Type':'Atom'},
+        {'Name':'Molecules',
+         'Dictionary':{"Molecules":"Species.Molecules.Molecule[]\\self"},
+         'Type':'Molecule'},
+        {'Name':'RadiativeTransitions',
+         'Dictionary':{"RadiativeTransitions":"Processes.Radiative.RadiativeTransition[]\\self"},
+         'Type':'RadiativeTransition'},
+        ]
+    }
 
-    def readXML(self, xml):
-        for el in self.DICT:
-            try:
-                item = eval("%s" % self.DICT[el])
-                self.additem(el, item )
-            except:
-                pass
-
-            # check for attributes
-##            try:
-##                for attribute in item.keys():
-##                    self.additem(el+attribute.capitalize(), item.get(attribute))
-##            except:
-##                pass
-
-DICT_MODELS = [
-    {'Name':'Atom',
-     'Dictionary':ATOMS_MODEL,
-     'init_functions':None,
-     'representation_fields':('SpeciesID', 'ChemicalElementSymbol', 'ChemicalElementNuclearCharge', 'InChIKey'),
-     },
-    {'Name':'Molecule',
-     'Dictionary':MOLECULES_MODEL,
-     'init_functions':None,
-     'representation_fields':('SpeciesID', 'InChIKey', 'OrdinaryStructuralFormula', 'StoichiometricFormula', 'Comment'),
-     },
-    
-    ]
-
-def _construct_class(model_definitions):
-    class _Model(Model):
-        DICT = model_definitions['Dictionary']
-
-        def __repr__(self):
-            retval = ""
-            for field in model_definitions['representation_fields']:
-                try:
-                    retval += "%s " % self.__dict__[field]
-                except KeyError:
-                    retval += "None "
-            return retval
-        
-    return _Model
-
-def register_models():
-    for model in DICT_MODELS:
-        print "Register Class %s in %s" % (model['Name'], __name__)
-        setattr(__import__(__name__), model['Name'], _construct_class(model))
-
-##class Atom(Model):
-    
-##    DICT = ATOMS_MODEL
-
-##    def __repr__(self):
-##        return "%s %s %s %s" % (self.SpeciesID, self.ChemicalElementSymbol, self.ChemicalElementNuclearCharge, self.InChIKey)
-
-        
-##class Molecule(Model):
-
-##    DICT = MOLECULES_MODEL
-    
-##    def __repr__(self):
-##        return "%s: %s, %s, %s, %s" % (self.SpeciesID, self.InChIKey, self.OrdinaryStructuralFormula, self.StoichiometricFormula, unicode(self.Comment))
-
-
-class Partitionfunctions(Model):
-
-    DICT = PARTITIONFUNCTIONS_MODEL
-    def __repr__(self):
-        return "%s: %s" % (self.SpeciesID, self.PartitionFunctionT)
-
+register_models(DICT_MODELS, module = __import__(__name__) )
 
 class QuantumNumbers(Model):
 
-    DICT = QUANTUMNUMBERS_MODEL
+    DICT = construct_model(QUANTUMNUMBERS_DICT) #MODEL
 
     ns = None
     qn_string = ""
@@ -559,6 +444,7 @@ class QuantumNumbers(Model):
         #return False
         return not self.__eq__(other)
 
+register_method(QuantumNumbers)
 
 class Source(object):
 #    xml = None
@@ -586,14 +472,6 @@ class Source(object):
         string += "(%s)" % self.xml.Year
 
         return string
-
-
-class RadiativeTransition(Model):
-
-    DICT = RADIATIVETRANS_MODEL
-
-    def __repr__(self):
-        return "%s: %s, %s, %s" % (self.Id, self.FrequencyValue, self.FrequencyAccuracy, self.TransitionProbabilityA)
 
 
 class CollisionalTransition(object):
@@ -649,114 +527,22 @@ class CollisionalTransition(object):
                 pass
             
 
-class State(Model):
-    """
-    State object which provides state information. 
-    """
-
-    DICT = STATES_MODEL
-
-    def __repr__(self):
-#        return "%s %s %s %s" % (self.StateID, self.SpecieID, self.StateEnergyValue, self.StateEnergyUnit)
-        return "%s %s %s" % (self.StateID, self.StateEnergyValue, self.StateEnergyUnit)
-
-    def readXML(self, xml):
-        Model.readXML(self, xml)
-#        for el in self.DICT:
-#            try:
-#                item = eval("self.xml.%s" % self.DICT[el])
-#                self.additem(el, item )
-#            except:
-#                pass
-            
-        # Attach Quantum numbers
-#        try:
-#            self.QuantumNumbers = QuantumNumbers(xml)
-#        except:
-#            pass
-
-
-    def __eq__(self,other):
-
-        # There should be also a check for specie's inchikey
-        if self.InChIKey != other.InChIKey:
-            return False
-        # Check if quantum numbers agree
-        if self.QuantumNumbers != other.QuantumNumbers:
-            return False
-
-            
-        return True
-
-    def __ne__(self,other):
-
-        # There should be also a check for specie's inchikey
-        if self.InChIKey != other.InChIKey:
-            return True
-
-        # Check if quantum numbers agree
-        if self.QuantumNumbers != other.QuantumNumbers:
-            return True
-
-            
-        return False
-
-
-
 ##################################################
 # process xml-data
 #-------------------------------------------------
 
-class Atoms(dict):
-
-    DICT = MAIN_MODEL
-
-    def __init__(self, xml):
-        dict.__init__(self)
-
-        self.xml = xml
-        for atom in eval("%s" % self.DICT['Atoms']):
-            at = Atom(atom)
-            self[at.SpeciesID]=at
-                
-class Molecules(dict):
-
-    DICT = MAIN_MODEL
-    
-    def __init__(self, xml):
-        dict.__init__(self)
-        
-        self.xml = xml
-        
-        for molecule in eval("%s" % self.DICT['Molecules']):
-            mol = Molecule(molecule)
-            self[mol.SpeciesID]=mol
-            
-class RadiativeTransitions(dict):
-
-    DICT = MAIN_MODEL
-
-    def __init__(self, xml):
-        dict.__init__(self)
-        self.xml = xml
-        
-        for radtrans in eval("%s" % self.DICT['RadiativeTransitions']):
-            rt = RadiativeTransition(radtrans)
-            self[rt.Id]=rt
-
-
 def populate_models(xml, add_states=False):
-
     data = {}
-    for item in MAIN_MODEL:
+    for item in DICT_MODELS['dict_types']:
         try:
-            data[item] = eval("%s(xml)" % item)
+            data[item['Name']] = eval("%s(xml)" % item['Name'])
         except NameError:
             pass
     if add_states and 'States' not in data.keys():
         data['States'] = {}
         for SpeciesID in data['Molecules']:
             for state in data['Molecules'][SpeciesID].States:
+                state.SpeciesID = SpeciesID
                 data['States'][state.StateID] = state
             
     return data

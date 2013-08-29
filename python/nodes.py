@@ -69,9 +69,14 @@ class Node(object):
         result.do_query()
         result.populate_model()
         
-
-        self.Molecules = result.Molecules
-        self.Atoms = result.Atoms
+        try:
+            self.Molecules = result.data['Molecules']
+        except:
+            pass
+        try:
+            self.Atoms = result.data['Atoms']
+        except:
+            pass
 
     def print_species(self):
         """
