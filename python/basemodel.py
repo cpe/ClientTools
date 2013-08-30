@@ -5,6 +5,12 @@ import numpy
 
 NAMESPACE='http://vamdc.org/xml/xsams/1.0'
 
+# some usefull functions
+def split_datalist(datalist):
+    """
+    """
+    return datalist.text.split(" ")
+
 def construct_model(dictionary):
 
     model = {}

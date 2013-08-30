@@ -5,15 +5,19 @@ import numpy
 from basemodel import *
 #import basemodel
 
-
 NAMESPACE='http://vamdc.org/xml/xsams/1.0'
 
-MAIN_DICT = {
-    "Atoms":"Species.Atoms.Atom[]\\self",
-    "Molecules":"Species.Molecules.Molecule[]\\self",
-    "RadiativeTransitions":"Processes.Radiative.RadiativeTransition[]\\self",
-    "CollisionalTransitions":"Processes.Collisions.CollisionalTransition[]\\self",
-    }
+########################################################################
+# Dictionaries for the Model-Layout
+#
+# These dictionaries contain the information which Classes are generated
+# and which fields they have. The key / value pair is the fieldname and
+# a path to the element in the XSAMS (XML) - Tree. Each child is connected
+# to its parent by ".". Brackets "[]" indicate that there are multiple
+# elements of the same type which have to be looped over. A function
+# can be applied to an element. The function name has to be connected to
+# the path by "\\".
+#-------------------------------------------------------------------------
 
 RADIATIVETRANS_DICT = {
     "Id":"@id",
@@ -66,15 +70,15 @@ MOLECULES_DICT = {
     "OrdinaryStructuralFormula":"MolecularChemicalSpecies.OrdinaryStructuralFormula.Value",
     "MolecularWeight":"MolecularChemicalSpecies.StableMolecularProperties.MolecularWeight.Value",
     "StoichiometricFormula":"MolecularChemicalSpecies.StoichiometricFormula",
-    "PartitionFunction":"MolecularChemicalSpecies.PartitionFunction[]\\convert_partitionfunctions",
+    "PartitionFunction":"MolecularChemicalSpecies.PartitionFunction[]\\Partitionfunctions",
     "States":"MolecularState[]\\State",
     }
 
 PARTITIONFUNCTIONS_DICT = {
 #    "SpeciesID":"getparent().getparent().get('speciesID')",
     "NuclearSpinIsomer":"NuclearSpinIsomer.Name",    
-    "PartitionFunctionT":"T.DataList",    
-    "PartitionFunctionQ":"Q.DataList",    
+    "PartitionFunctionT":"T.DataList\\split_datalist",    
+    "PartitionFunctionQ":"Q.DataList\\split_datalist",    
     "Units":"T.@units",
     "Comments":"Comments",
     }
@@ -84,10 +88,6 @@ COLLISIONALTRANS_DICT = {
     "ProcessClassCode":"ProcessClass.Code",
     "Reactant":"Reactant[].SpeciesRef",
     "Product":"Product[].SpeciesRef",
-#    "Reactant1":"Reactant[0].SpeciesRef.text",
-#    "Reactant2":"Reactant[1].SpeciesRef.text",
-#    "Product1":"Product[0].SpeciesRef.text",
-#    "Product2":"Product[1].SpeciesRef.text",
     "DataDescription":"DataSets.DataSet.@dataDescription",
     "TabulatedData":"DataSets.DataSet.TabulatedData",
     "X":"DataSets.DataSet.TabulatedData.X.DataList",
@@ -103,20 +103,17 @@ QUANTUMNUMBERS_DICT = {
     "__qnelements__":"*.*[]\\self",
 }
 
-##MAIN_MODEL = construct_model(MAIN_DICT)
-###ATOMS_MODEL = construct_model(ATOMS_DICT)
-###MOLECULES_MODEL = construct_model(MOLECULES_DICT)
-###STATES_MODEL = construct_model(STATES_DICT)
-PARTITIONFUNCTIONS_MODEL = construct_model(PARTITIONFUNCTIONS_DICT)
-##COLLISIONALTRANS_MODEL = construct_model(COLLISIONALTRANS_DICT)
-###RADIATIVETRANS_MODEL = construct_model(RADIATIVETRANS_DICT)
-##QUANTUMNUMBERS_MODEL = construct_model(QUANTUMNUMBERS_DICT)
-
-
-###############################
+#########################################################################
 # Functions for the models
+#
+# If additional methods have to be added to a (Model) class they have to be
+# defined here.
 #------------------------------------
-def states__eq__(self,other):
+def states__eq__(self, other):
+    """
+    Compare if a states equals another one. This method will be
+    connected to the States-Class and is needed to compare two states
+    """
     
     # There should be also a check for specie's inchikey
     if self.InChIKey != other.InChIKey:
@@ -127,8 +124,11 @@ def states__eq__(self,other):
     
     return True
 
-def states__ne__(self,other):
-
+def states__ne__(self, other):
+    """
+    Compare if a states does not equal another one. This method will be
+    connected to the States-Class and is needed to compare two states
+    """
     # There should be also a check for specie's inchikey
     if self.InChIKey != other.InChIKey:
         return True
@@ -139,7 +139,15 @@ def states__ne__(self,other):
 
     return False
 
-
+def partitionfunction_init(self, xml):
+    """
+    Creates a dictionary of Partitionfunctions (PF / Temperature) pairs
+    """
+    Model.__init__(self, xml)
+    self.values = {}
+    for i in range(len(self.PartitionFunctionT)):
+        self.values[self.PartitionFunctionT[i]]=self.PartitionFunctionQ[i]
+        
 def isVibrationalStateLabel(label):
     """
     Checks if the label defines a vibrational state
@@ -178,38 +186,6 @@ def convert_tabulateddata(item):
         datadict[x[i]]=y[i]
 
     return datadict, xunits, yunits, comment
-
-def convert_partitionfunctions(item):
-    """
-    Converts an element of type {..xsams..}abulatedData into a dictionary
-    with elements from X as key and elements from Y as values
-
-    Returns:
-
-    datadict = (dictionary) with datapoints
-    xunits = (string) unit of key elements
-    yunits = (string) containing unit of value elements
-    comment = (string)
-    """
-    T = eval('item.%s.split(" ")' % PARTITIONFUNCTIONS_MODEL['PartitionFunctionT'].replace('self.xml.',''))
-    Q = eval('item.%s.split(" ")' % PARTITIONFUNCTIONS_MODEL['PartitionFunctionQ'].replace('self.xml.',''))
-    Tunits = eval('item.%s' % PARTITIONFUNCTIONS_MODEL['Units'].replace('self.xml.',''))
-    try:
-        nuclearSpinIsomer = eval('item.%s' % PARTITIONFUNCTIONS_MODEL['NuclearSpinIsomer'].replace('self.xml.',''))
-    except:
-        nuclearSpinIsomer = ""
-    try:
-        comments = eval('item.%s' % PARTITIONFUNCTIONS_MODEL['Comments'].replace('self.xml.',''))
-    except:
-        comments = ""
-    
-    datadict = {}
-    for i in range(len(T)):
-        datadict[T[i]]=Q[i]
-
-    return {"Values":datadict, "Unit": Tunits, "Comment":comments, "NuclearSpinIsomer":nuclearSpinIsomer}
-
-register_method(convert_partitionfunctions)
 
 def convert_fitdata(item):
     """
@@ -283,7 +259,10 @@ def convert_fitdata(item):
 
     return {'parameters':parameters, 'arguments':arguments, 'function':function}
 
-
+#################################################################
+# Dictionary to Control Generation of Model- and Dictionary -
+# Classes
+#----------------------------------------------------------------
 DICT_MODELS = {
     'model_types':[
         {'Name':'Atom',
@@ -310,6 +289,9 @@ DICT_MODELS = {
          'Dictionary':PARTITIONFUNCTIONS_DICT,
          'init_functions':None,
          'representation_fields':('SpeciesID', 'PartitionFunctionT'),
+         'methods':[{'name':'__init__',
+                     'method':partitionfunction_init},
+                    ],
          },
         {'Name':'RadiativeTransition',
          'Dictionary':RADIATIVETRANS_DICT,
