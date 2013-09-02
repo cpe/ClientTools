@@ -148,7 +148,7 @@ class Result(object):
             self.root = ElementTree.fromstring(self.Xml)
         #    self.objectify()
 
-        self.data = populate_models(self.root)
+        self.data = populate_models(self.root, add_states=True)
 
 
     def get_vibstates(self):

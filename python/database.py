@@ -237,16 +237,16 @@ class Database(object):
             # Update Partitionfunctions
             try:
                 for pfs in Molecules[id].PartitionFunction:
-                    if not pfs['NuclearSpinIsomer']:
-                        for temperature in pfs['Values']:
+                    if not pfs.__dict__.has_key('NuclearSpinIsomer') or pfs.NuclearSpinIsomer == '':
+                        for temperature in pfs.values.keys():
 
                             try:
                                 field = ("PF_%.3lf" % float(temperature)).replace('.', '_')
                                 sql = "UPDATE Partitionfunctions SET %s=? WHERE PF_SpeciesID=?" % field
-                                cursor.execute(sql, (pfs['Values'][temperature], id))
+                                cursor.execute(sql, (pfs.values[temperature], id))
                             except Exception, e:
                                 print "SQL-Error: %s " % sql
-                                print pfs['Values'][temperature], id
+                                print pfs.values[temperature], id
                                 print "Error: %d: %s" % (e.args[0], e.args[1])
             except:
                 pass
@@ -334,15 +334,15 @@ class Database(object):
 
             cursor.execute("DELETE FROM Transitions WHERE T_Name = ?", (name,))
 
-            for trans in result.RadiativeTransitions:
+            for trans in result.data['RadiativeTransitions']:
                 # data might contain transitions for other species (if query is based on ichikey/vamdcspeciesid).
                 # Insert transitions only if they belong to the correct specie
 
-                if result.RadiativeTransitions[trans].SpeciesID == id:
+                if result.data['RadiativeTransitions'][trans].SpeciesID == id:
 
                     # Get upper and lower state from the states table
-                    upper_state = result.States["%s" % result.RadiativeTransitions[trans].UpperStateRef]
-                    lower_state = result.States["%s" % result.RadiativeTransitions[trans].LowerStateRef]
+                    upper_state = result.data['States']["%s" % result.data['RadiativeTransitions'][trans].UpperStateRef]
+                    lower_state = result.data['States']["%s" % result.data['RadiativeTransitions'][trans].LowerStateRef]
 
                     # Get string which identifies the vibrational states involved in the transition
                     try:
@@ -389,7 +389,7 @@ class Database(object):
                     if hfsInfo == '':
                         t_hfs = ''
                         try:
-                            for pc in result.RadiativeTransitions[trans].ProcessClass:
+                            for pc in result.data['RadiativeTransitions'][trans].ProcessClass:
                                 if str(pc)[:3] == 'hyp':
                                     t_hfs = str(pc)
                         except Exception, e:
@@ -413,8 +413,8 @@ class Database(object):
                         species_names[id] = [t_name]
                         num_transitions[t_name] = 0
 
-                    frequency = result.RadiativeTransitions[trans].FrequencyValue
-                    uncertainty = "%lf" % result.RadiativeTransitions[trans].FrequencyAccuracy
+                    frequency = float(result.data['RadiativeTransitions'][trans].FrequencyValue)
+                    uncertainty = "%lf" % float(result.data['RadiativeTransitions'][trans].FrequencyAccuracy)
 
                     # Get statistical weight if present
                     if upper_state.TotalStatisticalWeight:
@@ -443,8 +443,8 @@ class Database(object):
                         (?, ?,?,?,?, ?,?, ?,?)""",
                                        (t_name,
                                         "%lf" % frequency,
-                                        "%lf" % result.RadiativeTransitions[trans].TransitionProbabilityA,
-                                        uncertainty, "%lf" % lower_state.StateEnergyValue,
+                                        "%g" % float(result.data['RadiativeTransitions'][trans].TransitionProbabilityA),
+                                        uncertainty, "%lf" % float(lower_state.StateEnergyValue),
                                         weight,
                                         #upper_state.QuantumNumbers.case,
                                         t_hfs,
@@ -784,7 +784,7 @@ class Database(object):
             # if update is allowed then all entries in the database for the given species-id will be
             # deleted, and thus replaced by the new data
             if update:
-                cursor.execute("SELECT PF_Name FROM Partitionfunctions WHERE PF_SpeciesID = ?", (specie, ))
+                cursor.execute("SELECT PF_Name FROM Partitionfunctions WHERE PF_SpeciesID = ?", (speciesid, ))
                 rows = cursor.fetchall()
                 for row in rows:
                     names_black_list.remove(row[0])
@@ -794,21 +794,21 @@ class Database(object):
             
             #------------------------------------------------------------------------------------------------------
             # Insert all transitions
-            for trans in result.RadiativeTransitions:
+            for trans in result.data['RadiativeTransitions']:
                 # data might contain transitions for other species (if query is based on ichikey/vamdcspeciesid).
                 # Insert transitions only if they belong to the correct specie
 
-                if result.RadiativeTransitions[trans].SpeciesID == speciesid or speciesid is None:
-                    id = str(result.RadiativeTransitions[trans].SpeciesID)
+                if result.data['RadiativeTransitions'][trans].SpeciesID == speciesid or speciesid is None:
+                    id = str(result.data['RadiativeTransitions'][trans].SpeciesID)
                     # if an error has occured already then there will be no further insert
                     if id in species_with_error:
                         continue
                     
-                    formula = str(result.Molecules[id].OrdinaryStructuralFormula)
+                    formula = str(result.data['Molecules'][id].OrdinaryStructuralFormula)
                     # Get upper and lower state from the states table
                     try:
-                        upper_state = result.States["%s" % result.RadiativeTransitions[trans].UpperStateRef]
-                        lower_state = result.States["%s" % result.RadiativeTransitions[trans].LowerStateRef]
+                        upper_state = result.data['States']["%s" % result.data['RadiativeTransitions'][trans].UpperStateRef]
+                        lower_state = result.data['States']["%s" % result.data['RadiativeTransitions'][trans].LowerStateRef]
                     except KeyError:
                         print " -- Error: State is missing"
                         species_with_error.append(id)
@@ -822,7 +822,7 @@ class Database(object):
                     # (there can be multiple values in the complete dataset
                     t_hfs = ''
                     try:
-                        for pc in result.RadiativeTransitions[trans].ProcessClass:
+                        for pc in result.data['RadiativeTransitions'][trans].ProcessClass:
                             if str(pc)[:3] == 'hyp':
                                 t_hfs = str(pc)
                     except Exception, e:
@@ -844,9 +844,9 @@ class Database(object):
                         species_names[id] = [t_name]
                         num_transitions[t_name] = 0
 
-                    frequency = result.RadiativeTransitions[trans].FrequencyValue
+                    frequency = float(result.data['RadiativeTransitions'][trans].FrequencyValue)
                     try:
-                        uncertainty = "%lf" % result.RadiativeTransitions[trans].FrequencyAccuracy
+                        uncertainty = "%lf" % float(result.data['RadiativeTransitions'][trans].FrequencyAccuracy)
                     except TypeError:
                         print " -- Error uncertainty not available"
                         species_with_error.append(id)
@@ -881,8 +881,8 @@ class Database(object):
                         (?, ?,?,?,?, ?,?, ?,?)""",
                                        (t_name,
                                         "%lf" % frequency,
-                                        "%lf" % result.RadiativeTransitions[trans].TransitionProbabilityA,
-                                        uncertainty, "%lf" % lower_state.StateEnergyValue,
+                                        "%g" % float(result.data['RadiativeTransitions'][trans].TransitionProbabilityA),
+                                        uncertainty, "%lf" % float(lower_state.StateEnergyValue),
                                         weight,
                                         #upper_state.QuantumNumbers.case,
                                         t_hfs,
@@ -930,9 +930,9 @@ class Database(object):
                         cursor.execute("INSERT INTO Partitionfunctions (PF_Name, PF_SpeciesID, PF_VamdcSpeciesID, PF_HFS, PF_Comment, PF_ResourceID, PF_URL, PF_Timestamp) VALUES (?,?,?,?,?,?,?,?)",
                                        ("%s" % name,
                                         id,
-                                        "%s" % (result.Molecules[id].VAMDCSpeciesID),
+                                        "%s" % (result.data['Molecules'][id].VAMDCSpeciesID),
                                         hfs,
-                                        "%s" % (result.Molecules[id].Comment),
+                                        "%s" % (result.data['Molecules'][id].Comment),
                                         resourceID,
                                         "%s%s%s" % (url, "sync?LANG=VSS2&amp;REQUEST=doQuery&amp;FORMAT=XSAMS&amp;QUERY=Select+*+where+SpeciesID%3D", id),
                                         datetime.now(), ))
@@ -940,21 +940,21 @@ class Database(object):
                         print "An error occurred:", e.args[0]
                     except Exception as e:
                         print "An error occurred:", e.args[0]
-                        print result.Molecules.keys()
+                        print result.data['Molecules'].keys()
 
                 # Update Partitionfunctions
                 try:
-                    for pfs in result.Molecules[id].PartitionFunction:
-                        if not pfs['NuclearSpinIsomer']:
-                            for temperature in pfs['Values']:
+                    for pfs in result.data['Molecules'][id].PartitionFunction:
+                        if not pfs.__dict__.has_key('NuclearSpinIsomer') or pfs.NuclearSpinIsomer == '':
+                            for temperature in pfs.values.keys():
 
                                 try:
                                     field = ("PF_%.3lf" % float(temperature)).replace('.', '_')
                                     sql = "UPDATE Partitionfunctions SET %s=? WHERE PF_SpeciesID=?" % field
-                                    cursor.execute(sql, (pfs['Values'][temperature], id))
+                                    cursor.execute(sql, (pfs.values[temperature], id))
                                 except Exception, e:
                                     print "SQL-Error: %s " % sql
-                                    print pfs['Values'][temperature], id
+                                    print pfs.values[temperature], id
                                     print "Error: %d: %s" % (e.args[0], e.args[1])
                 except:
                     pass
@@ -1050,7 +1050,7 @@ class Database(object):
                     result.set_query(query)
                     result.do_query()
                     result.populate_model()
-                    insert_species_data(result.Molecules, update = True)
+                    insert_species_data(result.data['Molecules'], update = True)
                     print " -- UPDATE DONE    -- "
                 else:
                     print " -- up to date"
