@@ -314,15 +314,17 @@ def isVibrationalStateLabel(label):
 #----------------------------------------------------------------
 DICT_MODELS = {
     'model_types':[
-        {'Name':'Atom',
-         'Dictionary':ATOMS_DICT,
-         'init_functions':None,
-         'representation_fields':('SpeciesID', 'ChemicalElementSymbol', 'ChemicalElementNuclearCharge', 'InChIKey'),
+        {'Name':'FitParameters',
+         'Dictionary':FITPARAMETERS_DICT,
+         'representation_fields':('Function',),
          },
-        {'Name':'Molecule',
-         'Dictionary':MOLECULES_DICT,
-         'init_functions':None,
-         'representation_fields':('SpeciesID', 'InChIKey', 'OrdinaryStructuralFormula', 'StoichiometricFormula', 'Comment'),
+        {'Name':'Parameter',
+         'Dictionary':FITPARAMETER_DICT,
+         'representation_fields':('Name',),
+         },
+        {'Name':'Argument',
+         'Dictionary':FITARGUMENT_DICT,
+         'representation_fields':('Name',),
          },
         {'Name':'State',
          'Dictionary':STATES_DICT,
@@ -356,6 +358,16 @@ DICT_MODELS = {
                      'method':partitionfunction_init},
                     ],
          },
+        {'Name':'Atom',
+         'Dictionary':ATOMS_DICT,
+         'init_functions':None,
+         'representation_fields':('SpeciesID', 'ChemicalElementSymbol', 'ChemicalElementNuclearCharge', 'InChIKey'),
+         },
+        {'Name':'Molecule',
+         'Dictionary':MOLECULES_DICT,
+         'init_functions':None,
+         'representation_fields':('SpeciesID', 'InChIKey', 'OrdinaryStructuralFormula', 'StoichiometricFormula', 'Comment'),
+         },
         {'Name':'RadiativeTransition',
          'Dictionary':RADIATIVETRANS_DICT,
          'init_functions':None,
@@ -377,18 +389,6 @@ DICT_MODELS = {
                      'method':source_init},
                     ],
          },
-        {'Name':'FitParameters',
-         'Dictionary':FITPARAMETERS_DICT,
-         'representation_fields':('Function',),
-         },
-        {'Name':'Parameter',
-         'Dictionary':FITPARAMETER_DICT,
-         'representation_fields':('Name',),
-         },
-        {'Name':'Argument',
-         'Dictionary':FITARGUMENT_DICT,
-         'representation_fields':('Name',),
-         },
         ],
     'dict_types':[
         {'Name':'Atoms',
@@ -403,9 +403,9 @@ DICT_MODELS = {
         {'Name':'CollisionalTransitions',
          'Dictionary':{"CollisionalTransitions":"Processes.Collisions.CollisionalTransition[]\\self"},
          'Type':'CollisionalTransition'},
-        {'Name':'Sources',
-         'Dictionary':{"Sources":"Sources.Source[]\\self"},
-         'Type':'Source'},
+#        {'Name':'Sources',
+#         'Dictionary':{"Sources":"Sources.Source[]\\self"},
+#         'Type':'Source'},
         ]
     }
 
@@ -420,7 +420,9 @@ def populate_models(xml, add_states=False):
     for item in DICT_MODELS['dict_types']:
         try:
             data[item['Name']] = eval("%s(xml)" % item['Name'])
-        except NameError:
+        except Exception, e: # NameError:
+            #print "Error: Could not evaluate %s" % item['Name']
+            #print e
             pass
     if add_states and 'States' not in data.keys():
         data['States'] = {}

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import functions 
 import numpy
+import sys
 
 NAMESPACE='http://vamdc.org/xml/xsams/1.0'
 
@@ -168,13 +169,13 @@ class Model(object):
             pass
 
     def readXML(self, xml):
-        for el in self.DICT:
+        for item in self.DICT:
             try:
-                item = eval("%s" % self.DICT[el])
-                self.additem(el, item )
+                value = eval("%s" % self.DICT[item])
+                self.additem(item, value )
             except AttributeError:
-                print "Could not evaluate %s" % el
-                #pass
+                #print "Could not evaluate %s" % el
+                pass
 
             # check for attributes
 ##            try:
@@ -232,9 +233,8 @@ def register_models(DICT_MODELS, module):
     """
     for model in DICT_MODELS['model_types']:
         print "Register Class %s in %s" % (model['Name'], module.__name__)
-        #setattr(module, model['Name'], _construct_class(model, module))
         model_class = _construct_class(model)
-        setattr(__import__(__name__), model['Name'], model_class )
+        setattr(sys.modules[__name__], model['Name'], model_class )
         setattr(module, model['Name'], model_class )
 
 
@@ -243,8 +243,3 @@ def register_models(DICT_MODELS, module):
         setattr(module, model['Name'], _construct_dictmodelclass(model, module))
         
 
-#def register_method(method):   
-#    setattr(__import__(__name__), method.__name__, method)
-
-
-#register_models(DICT_MODELS, module = __import__(__name__) )

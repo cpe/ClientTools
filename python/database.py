@@ -352,14 +352,14 @@ class Database(object):
                             #vup = upper_state.QuantumNumbers.vibstate.split(",")
                             #vlow = lower_state.QuantumNumbers.vibstate.split(",")
                             v_dict = {}
-                            for label in list(set(upper_state.QuantumNumbers.qns.keys() + lower_state.QuantumNumbers.qns.keys())):
+                            for label in list(set(upper_state.QuantumNumbers.qn_dict.keys() + lower_state.QuantumNumbers.qn_dict.keys())):
                                 if isVibrationalStateLabel(label):
                                     try:
-                                        value_up = upper_state.QuantumNumbers.qns[label]
+                                        value_up = upper_state.QuantumNumbers.qn_dict[label]
                                     except:
                                         value_up = 0
                                     try:
-                                        value_low = lower_state.QuantumNumbers.qns[label]
+                                        value_low = lower_state.QuantumNumbers.qn_dict[label]
                                     except:
                                         value_low = 0
                                     v_dict[label] = [value_up, value_low]
@@ -794,7 +794,11 @@ class Database(object):
             
             #------------------------------------------------------------------------------------------------------
             # Insert all transitions
+            num_transitions_found = len(result.data['RadiativeTransitions'])
+            counter_transitions = 0
             for trans in result.data['RadiativeTransitions']:
+                counter_transitions+=1
+                print "\r insert transition %d of %d" % (counter_transitions, num_transitions_found),
                 # data might contain transitions for other species (if query is based on ichikey/vamdcspeciesid).
                 # Insert transitions only if they belong to the correct specie
 
@@ -809,7 +813,7 @@ class Database(object):
                     try:
                         upper_state = result.data['States']["%s" % result.data['RadiativeTransitions'][trans].UpperStateRef]
                         lower_state = result.data['States']["%s" % result.data['RadiativeTransitions'][trans].LowerStateRef]
-                    except KeyError:
+                    except (KeyError, AttributeError):
                         print " -- Error: State is missing"
                         species_with_error.append(id)
                         continue
@@ -861,6 +865,7 @@ class Database(object):
                         continue
                         
                     # Get nuclear spin isomer (ortho/para) if present
+                    #print "%s; %s" % (result.data['RadiativeTransitions'][trans].Id, upper_state.Id)
                     try:
                         nsiName = upper_state.NuclearSpinIsomerName
                     except AttributeError:
@@ -892,6 +897,7 @@ class Database(object):
                         num_transitions[t_name] += 1
                     except Exception, e:
                         print "Transition has not been inserted:\n Error: %s" % e
+            print "\n"
             #------------------------------------------------------------------------------------------------------
 
             #------------------------------------------------------------------------------------------------------
@@ -1122,14 +1128,14 @@ class Database(object):
             t_state = str(upper_state.QuantumNumbers.vibstate).strip()
         else:
             v_dict = {}
-            for label in list(set(upper_state.QuantumNumbers.qns.keys() + lower_state.QuantumNumbers.qns.keys())):
+            for label in list(set(upper_state.QuantumNumbers.qn_dict.keys() + lower_state.QuantumNumbers.qn_dict.keys())):
                 if functions.isVibrationalStateLabel(label):
                     try:
-                        value_up = upper_state.QuantumNumbers.qns[label]
+                        value_up = upper_state.QuantumNumbers.qn_dict[label]
                     except:
                         value_up = 0
                     try:
-                        value_low = lower_state.QuantumNumbers.qns[label]
+                        value_low = lower_state.QuantumNumbers.qn_dict[label]
                     except:
                         value_low = 0
                     v_dict[label] = [value_up, value_low]
